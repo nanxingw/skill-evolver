@@ -1,6 +1,6 @@
 # skill-evolver
 
-**Create and evolve Claude Code skills automatically.**
+**Create and evolve Claude Code skills and your own context automatically.**
 
 ## The Problem
 

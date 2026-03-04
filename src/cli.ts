@@ -45,6 +45,7 @@ export function runCLI(): void {
       const existingPid = await readPid();
       if (existingPid && isProcessRunning(existingPid)) {
         console.log(`Daemon already running (PID ${existingPid})`);
+        console.log(`Run 'skill-evolver stop' first, then start again.`);
         return;
       }
 
