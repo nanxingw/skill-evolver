@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import yaml from "js-yaml";
 import { orchestrator } from "../orchestrator.js";
-import { isSchedulerRunning, getNextRun } from "../scheduler.js";
+import { isSchedulerRunning, getNextRun, reschedule } from "../scheduler.js";
 import { listReports, readReport, getReportsDir } from "../reports.js";
 import { loadConfig, saveConfig, type Config } from "../config.js";
 
@@ -25,6 +25,9 @@ apiRoutes.get("/api/status", (c) => {
 apiRoutes.post("/api/trigger", (c) => {
   orchestrator.runEvolutionCycle().catch(() => {
     // errors emitted via orchestrator events
+  }).finally(() => {
+    // Reschedule so next auto-run is interval-after-this-run
+    reschedule();
   });
   return c.json({ triggered: true });
 });

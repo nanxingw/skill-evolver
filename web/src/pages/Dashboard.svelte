@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { fetchStatus, triggerEvolution } from "../lib/api";
+  import { fetchStatus, triggerEvolution, fetchReports, fetchSkills } from "../lib/api";
   import { createWsConnection } from "../lib/ws";
 
   let state: string = $state("idle");
@@ -12,7 +12,7 @@
   let triggering: boolean = $state(false);
 
   let stateColor = $derived(
-    state === "running" ? "#f0a500" : state === "idle" ? "#4ecdc4" : "#888"
+    state === "running" ? "var(--state-running)" : state === "idle" ? "var(--state-idle)" : "var(--state-default)"
   );
 
   async function loadStatus() {
@@ -21,11 +21,17 @@
       state = s.state;
       lastRun = s.lastRun;
       nextRun = s.nextRun;
-      totalReports = s.totalReports;
-      evolvedSkills = s.evolvedSkills;
     } catch {
       // will retry via ws
     }
+    try {
+      const reports = await fetchReports();
+      totalReports = reports.length;
+    } catch { /* ignore */ }
+    try {
+      const skills = await fetchSkills();
+      evolvedSkills = skills.length;
+    } catch { /* ignore */ }
   }
 
   async function handleTrigger() {
@@ -44,16 +50,17 @@
   onMount(() => {
     loadStatus();
     const ws = createWsConnection((event, data) => {
-      if (event === "status") {
-        state = data.state;
-        lastRun = data.lastRun ?? lastRun;
-        nextRun = data.nextRun ?? nextRun;
-        totalReports = data.totalReports ?? totalReports;
-        evolvedSkills = data.evolvedSkills ?? evolvedSkills;
+      if (event === "cycle_start") {
+        state = "running";
+        liveOutput = "";
       } else if (event === "cycle_progress") {
         liveOutput += data.text ?? "";
-      } else if (event === "cycle_complete") {
+      } else if (event === "cycle_end") {
+        state = "idle";
         loadStatus();
+      } else if (event === "cycle_error") {
+        state = "idle";
+        liveOutput += `\n[ERROR] ${data.message ?? "Unknown error"}`;
       }
     });
     return () => ws.close();
@@ -119,64 +126,70 @@
   }
 
   .card {
-    background: #16213e;
-    border: 1px solid #2a2a4a;
-    border-radius: 8px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 0.625rem;
     padding: 1rem;
   }
 
   .card h3 {
     font-size: 0.75rem;
     text-transform: uppercase;
-    color: #888;
+    color: var(--text-muted);
     margin-bottom: 0.5rem;
+    letter-spacing: 0.03em;
   }
 
   .badge {
     display: inline-block;
     padding: 0.2rem 0.75rem;
-    border-radius: 12px;
+    border-radius: 9999px;
     font-size: 0.85rem;
-    font-weight: 600;
-    color: #1a1a2e;
+    font-weight: 500;
+    color: var(--badge-text);
   }
 
   .stat {
     font-size: 1.75rem;
-    font-weight: 700;
-    color: #4ecdc4;
+    font-weight: 600;
+    color: var(--accent);
   }
 
   .trigger-btn {
     align-self: flex-start;
-    background: #4ecdc4;
-    color: #1a1a2e;
+    background: var(--accent);
+    color: var(--accent-text);
     border: none;
     padding: 0.6rem 1.5rem;
-    border-radius: 6px;
-    font-weight: 600;
+    border-radius: 0.625rem;
+    font-weight: 500;
     cursor: pointer;
     font-size: 0.95rem;
-    transition: opacity 0.15s;
+    transition: background 0.15s, opacity 0.15s;
+  }
+
+  .trigger-btn:hover {
+    background: var(--accent-hover);
   }
 
   .trigger-btn:disabled {
-    opacity: 0.5;
+    opacity: 0.4;
     cursor: not-allowed;
   }
 
   .live-panel {
-    background: #16213e;
-    border: 1px solid #2a2a4a;
-    border-radius: 8px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 0.625rem;
     padding: 1rem;
   }
 
   .live-panel h3 {
     font-size: 0.8rem;
     text-transform: uppercase;
-    color: #888;
+    color: var(--text-muted);
     margin-bottom: 0.75rem;
+    letter-spacing: 0.03em;
   }
 
   .live-panel pre {
@@ -186,6 +199,6 @@
     word-break: break-word;
     max-height: 400px;
     overflow-y: auto;
-    color: #ccc;
+    color: var(--text-secondary);
   }
 </style>

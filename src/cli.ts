@@ -58,8 +58,24 @@ export function runCLI(): void {
 
       // Start web server
       const { startServer } = await import("./server/index.js");
-      await startServer(config.port);
+      const { wsBroadcast } = startServer(config.port);
       console.log(`Dashboard: http://localhost:${config.port}`);
+
+      // Bridge orchestrator events → WebSocket broadcast
+      orchestrator.on("cycle_start", () => {
+        wsBroadcast.broadcast("cycle_start", {});
+      });
+      orchestrator.on("cycle_progress", (text: string) => {
+        wsBroadcast.broadcast("cycle_progress", { text });
+      });
+      orchestrator.on("cycle_end", (result: unknown) => {
+        wsBroadcast.broadcast("cycle_end", { result });
+      });
+      orchestrator.on("cycle_error", (err: unknown) => {
+        wsBroadcast.broadcast("cycle_error", {
+          message: err instanceof Error ? err.message : String(err),
+        });
+      });
 
       // Keep process alive
       process.on("SIGTERM", async () => {

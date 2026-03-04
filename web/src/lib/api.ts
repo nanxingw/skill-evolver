@@ -11,17 +11,17 @@ export async function fetchStatus() {
     state: string;
     lastRun: string | null;
     nextRun: string | null;
-    totalReports: number;
-    evolvedSkills: number;
+    isSchedulerActive: boolean;
   }>("/api/status");
 }
 
 export async function triggerEvolution() {
-  return request<{ ok: boolean }>("/api/trigger", { method: "POST" });
+  return request<{ triggered: boolean }>("/api/trigger", { method: "POST" });
 }
 
 export async function fetchReports() {
-  return request<{ filename: string; date: string }[]>("/api/reports");
+  const data = await request<{ reports: { filename: string; date: string }[] }>("/api/reports");
+  return data.reports;
 }
 
 export async function fetchReport(filename: string) {
@@ -32,13 +32,14 @@ export async function fetchReport(filename: string) {
 
 export async function fetchContext(pillar: string) {
   return request<{
-    context: { content: string; graduated?: string }[];
-    tmp: { content: string; times_seen: number; signals: string[] }[];
+    context: unknown[];
+    tmp: unknown[];
   }>(`/api/context/${encodeURIComponent(pillar)}`);
 }
 
 export async function fetchSkills() {
-  return request<{ name: string; path: string }[]>("/api/skills");
+  const data = await request<{ skills: { name: string; exists: boolean }[] }>("/api/skills");
+  return data.skills;
 }
 
 export async function fetchConfig() {
@@ -47,16 +48,13 @@ export async function fetchConfig() {
     model: string;
     autoRun: boolean;
     port: number;
+    maxReports: number;
+    reportsToFeed: number;
   }>("/api/config");
 }
 
-export async function updateConfig(config: {
-  interval?: string;
-  model?: string;
-  autoRun?: boolean;
-  port?: number;
-}) {
-  return request<{ ok: boolean }>("/api/config", {
+export async function updateConfig(config: Record<string, unknown>) {
+  return request<Record<string, unknown>>("/api/config", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(config),

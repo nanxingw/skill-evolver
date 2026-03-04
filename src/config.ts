@@ -18,7 +18,7 @@ const CONFIG_PATH = join(CONFIG_DIR, "config.yaml");
 export function getDefaultConfig(): Config {
   return {
     interval: "1h",
-    model: "sonnet",
+    model: "opus",
     autoRun: true,
     port: 3271,
     maxReports: 50,

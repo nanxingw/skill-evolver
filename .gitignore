@@ -7,3 +7,4 @@ web/dist/
 .DS_Store
 .claude
 CLAUDE.md
+logs/

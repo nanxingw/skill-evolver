@@ -16,7 +16,9 @@ export function buildPrompt(recentReports: string[]): string {
 
   const identity = `You are running as a background evolution engine for skill-evolver.
 Your purpose is to use the user-context and skill-evolver skills to review session logs, accumulate insights, and evolve skills.
-You have bypassPermissions — you can read and write any file needed.`;
+You have bypassPermissions — you can read and write any file needed.
+
+CRITICAL PATH CONSTRAINT: You must ONLY read and write skill files under ~/.claude/skills/ (the installed location). NEVER modify files inside any project source directory (e.g. any path containing /skill-evolver/skills/ or similar project paths). The project's skills/ directory contains source templates and must not be touched.`;
 
   let reportsSection = "";
   if (recentReports.length > 0) {

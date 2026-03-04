@@ -76,11 +76,12 @@
 <style>
   .reports h2 {
     font-size: 1.1rem;
+    font-weight: 500;
     margin-bottom: 1rem;
   }
 
   .muted {
-    color: #666;
+    color: var(--text-dim);
   }
 
   ul {
@@ -95,22 +96,23 @@
     display: flex;
     align-items: center;
     gap: 1rem;
-    background: #16213e;
-    border: 1px solid #2a2a4a;
-    border-radius: 6px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 0.625rem;
     padding: 0.75rem 1rem;
-    color: #e0e0e0;
+    color: var(--text);
     cursor: pointer;
     text-align: left;
     font-size: 0.9rem;
+    transition: border-color 0.15s;
   }
 
   .report-item:hover {
-    border-color: #4ecdc4;
+    border-color: var(--accent);
   }
 
   .date {
-    color: #888;
+    color: var(--text-muted);
     min-width: 90px;
   }
 
@@ -121,13 +123,13 @@
   }
 
   .chevron {
-    color: #666;
+    color: var(--text-dim);
   }
 
   .content {
-    background: #0f1729;
-    border: 1px solid #2a2a4a;
-    border-radius: 0 0 6px 6px;
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    border-radius: 0 0 0.625rem 0.625rem;
     padding: 1rem;
     margin-top: -0.25rem;
   }
@@ -137,7 +139,7 @@
     font-size: 0.8rem;
     white-space: pre-wrap;
     word-break: break-word;
-    color: #ccc;
+    color: var(--text-secondary);
     max-height: 500px;
     overflow-y: auto;
   }

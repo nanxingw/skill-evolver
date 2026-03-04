@@ -79,6 +79,7 @@
 <style>
   .settings h2 {
     font-size: 1.1rem;
+    font-weight: 500;
     margin-bottom: 1rem;
   }
 
@@ -98,16 +99,17 @@
   label span {
     font-size: 0.8rem;
     text-transform: uppercase;
-    color: #888;
+    color: var(--text-muted);
+    letter-spacing: 0.03em;
   }
 
   input[type="text"],
   input[type="number"],
   select {
-    background: #16213e;
-    color: #e0e0e0;
-    border: 1px solid #2a2a4a;
-    border-radius: 6px;
+    background: var(--bg-surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 0.625rem;
     padding: 0.5rem 0.75rem;
     font-size: 0.9rem;
   }
@@ -115,7 +117,7 @@
   input:focus,
   select:focus {
     outline: none;
-    border-color: #4ecdc4;
+    border-color: var(--accent);
   }
 
   .toggle-row {
@@ -127,33 +129,37 @@
   .toggle-row input[type="checkbox"] {
     width: 18px;
     height: 18px;
-    accent-color: #4ecdc4;
+    accent-color: var(--accent);
   }
 
   .save-btn {
     align-self: flex-start;
-    background: #4ecdc4;
-    color: #1a1a2e;
+    background: var(--accent);
+    color: var(--accent-text);
     border: none;
     padding: 0.6rem 1.5rem;
-    border-radius: 6px;
-    font-weight: 600;
+    border-radius: 0.625rem;
+    font-weight: 500;
     cursor: pointer;
     font-size: 0.95rem;
-    transition: opacity 0.15s;
+    transition: background 0.15s, opacity 0.15s;
+  }
+
+  .save-btn:hover {
+    background: var(--accent-hover);
   }
 
   .save-btn:disabled {
-    opacity: 0.5;
+    opacity: 0.4;
     cursor: not-allowed;
   }
 
   .message {
     font-size: 0.85rem;
-    color: #4ecdc4;
+    color: var(--accent);
   }
 
   .message.error {
-    color: #e74c3c;
+    color: var(--error);
   }
 </style>

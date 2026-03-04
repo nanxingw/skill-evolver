@@ -1,10 +1,11 @@
-import cron from "node-cron";
 import { orchestrator } from "./orchestrator.js";
 
-let task: cron.ScheduledTask | null = null;
-let currentExpression: string = "";
+let timer: ReturnType<typeof setTimeout> | null = null;
+let intervalMs: number = 0;
+let nextRunTime: Date | null = null;
+let active: boolean = false;
 
-export function parseInterval(interval: string): string {
+export function parseIntervalMs(interval: string): number {
   const match = interval.match(/^(\d+)(m|h)$/);
   if (!match) {
     throw new Error(`Invalid interval format: "${interval}". Use e.g. "30m", "1h", "2h".`);
@@ -14,50 +15,65 @@ export function parseInterval(interval: string): string {
 
   if (unit === "m") {
     if (value <= 0 || value > 59) throw new Error("Minute interval must be 1-59");
-    return `*/${value} * * * *`;
+    return value * 60 * 1000;
   }
   // unit === "h"
   if (value <= 0 || value > 23) throw new Error("Hour interval must be 1-23");
-  return `0 */${value} * * *`;
+  return value * 60 * 60 * 1000;
 }
 
-export function startScheduler(interval: string): void {
-  if (task) {
-    stopScheduler();
-  }
-  currentExpression = parseInterval(interval);
-  task = cron.schedule(currentExpression, async () => {
+function scheduleNext(): void {
+  if (!active || intervalMs <= 0) return;
+  if (timer) clearTimeout(timer);
+
+  nextRunTime = new Date(Date.now() + intervalMs);
+  timer = setTimeout(async () => {
+    timer = null;
+    nextRunTime = null;
     if (orchestrator.state === "running") {
-      return; // skip if already running
+      // Already running (e.g. manual trigger in progress) — wait and retry
+      timer = setTimeout(() => scheduleNext(), 60_000);
+      return;
     }
     try {
       await orchestrator.runEvolutionCycle();
     } catch {
       // errors emitted via orchestrator events
     }
-  });
+    // After cycle completes, schedule the next one
+    scheduleNext();
+  }, intervalMs);
+}
+
+export function startScheduler(interval: string): void {
+  stopScheduler();
+  intervalMs = parseIntervalMs(interval);
+  active = true;
+  scheduleNext();
+}
+
+export function reschedule(): void {
+  // Reset the timer so next run is interval-after-now
+  // Called after manual triggers or config changes
+  if (active && intervalMs > 0) {
+    scheduleNext();
+  }
 }
 
 export function stopScheduler(): void {
-  if (task) {
-    task.stop();
-    task = null;
-    currentExpression = "";
+  active = false;
+  if (timer) {
+    clearTimeout(timer);
+    timer = null;
   }
+  nextRunTime = null;
+  intervalMs = 0;
 }
 
 export function isSchedulerRunning(): boolean {
-  return task !== null;
+  return active;
 }
 
 export function getNextRun(): Date | null {
-  if (!task || !currentExpression) return null;
-  // node-cron doesn't expose next run directly; calculate from cron expression
-  try {
-    const interval = cron.getTasks();
-    // Simple approximation: return null if we can't determine
-    return null;
-  } catch {
-    return null;
-  }
+  return nextRunTime;
 }
