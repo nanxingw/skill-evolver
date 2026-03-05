@@ -8,7 +8,7 @@ You are not having a conversation. You are performing a structured data-evolutio
 
 ## 1. Session Search Scripts
 
-Search scripts are installed at `~/.claude/skills/user-context/scripts/`. Use them via Bash to efficiently query session history — **never read raw JSONL files directly** (they can be 200MB+ and 99% is noise from tool_results and progress messages).
+Search scripts are installed at `~/.claude/skills/user-context/scripts/`. Use them via Bash to efficiently query session history — **prefer scripts over reading raw JSONL files** (they can be 200MB+ and 99% is noise from tool_results and progress messages). If a script cannot fulfill your need (e.g., you need to inspect a specific raw tool_result or debug a script output), you may fall back to reading the JSONL file directly with Read or Grep, but limit yourself to small byte ranges or targeted searches.
 
 ### Script Reference
 
@@ -247,8 +247,8 @@ How the user thinks and communicates:
 When you are invoked for an evolution cycle, follow this sequence:
 
 1. **Read your previous reports** (provided as input) to know what sessions you already processed and what work is pending.
-2. **Find new session logs** using Glob. Identify sessions modified since your last run.
-3. **Scan session logs** for signals. Focus on human messages and assistant text responses. Look for:
+2. **Find new sessions** using `list-sessions.mjs --since <last-run-date>`. Identify sessions you haven't analyzed yet.
+3. **Scan sessions for signals** using `session-digest.mjs` for conversation text and `search-messages.mjs` for targeted keyword search. Look for:
    - Direct preference statements
    - Corrections ("no, do it this way")
    - Repeated patterns across sessions

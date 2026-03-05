@@ -1,6 +1,6 @@
 ---
 name: user-context
-description: "User profile and preferences knowledge base. Contains confirmed user preferences (tools, code style, communication), objectives (current projects, career goals), and cognitive patterns (personality, decision-making style). Read context/ files to personalize responses; read tmp/ files for emerging patterns. Use this skill whenever you need to understand the user's habits, goals, or communication preferences."
+description: "User profile and preferences knowledge base. Contains confirmed user preferences (tools, code style, communication), objectives (current projects, career goals), and cognitive patterns (personality, decision-making style). Read context/ files to personalize responses; read tmp/ files for emerging patterns. Use this skill whenever you need to understand the user's habits, goals, or communication preferences. Includes session history search scripts (scripts/) for querying past Claude Code conversations by keyword, time, or project."
 allowed-tools:
   - Read
   - Write
@@ -12,7 +12,7 @@ allowed-tools:
 
 # User Context — Living User Profile
 
-This skill maintains a structured, evidence-based profile of the user across three pillars:
+This skill maintains a structured, evidence-based profile of the user across three pillars, and provides **session history search tools** for querying past Claude Code conversations.
 
 | Pillar | File | What it captures |
 |--------|------|-----------------|
@@ -58,13 +58,25 @@ entries:
     times_seen: 1
 ```
 
+### scripts/ — Session History Search Tools
+
+Streaming search scripts for querying past Claude Code session logs. Raw JSONL files can be 200MB+ with 99% noise — these scripts extract only useful conversation data.
+
+| Script | Purpose |
+|--------|---------|
+| `list-sessions.mjs` | Find sessions by date/project, sorted by recency |
+| `session-digest.mjs` | Extract user text + assistant text only (224MB → ~500KB in ~1s) |
+| `search-messages.mjs` | Regex keyword search across all sessions |
+| `extract-tool-flow.mjs` | Tool usage sequence with error detection |
+| `session-stats.mjs` | Quick session statistics (duration, tool counts, errors) |
+
 ---
 
 ## How to Use This Skill
 
 ### During normal work (runtime)
 
-Read `reference/runtime_guide.md` for instructions on how to leverage the stored user profile to personalize your responses and decisions.
+Read `reference/runtime_guide.md` for instructions on how to leverage the stored user profile and session history search to personalize your responses and recall past context.
 
 ### During an evolution cycle (background task)
 
