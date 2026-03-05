@@ -6,44 +6,56 @@ You are not having a conversation. You are performing a structured data-evolutio
 
 ---
 
-## 1. Session Log Location and Format
+## 1. Session Search Scripts
 
-Claude Code stores conversation logs as JSONL files:
+Search scripts are installed at `~/.claude/skills/user-context/scripts/`. Use them via Bash to efficiently query session history — **never read raw JSONL files directly** (they can be 200MB+ and 99% is noise from tool_results and progress messages).
 
-```
-~/.claude/projects/<project-path-encoded>/<session-id>.jsonl
-```
+### Script Reference
 
-**Path encoding**: The absolute project path has its leading `/` removed and all remaining `/` replaced with `-`. For example, project at `/Users/alice/my-project` becomes `Users-alice-my-project`.
+| Script | Purpose | Example |
+|--------|---------|---------|
+| `list-sessions.mjs` | Find sessions by date/project | `node ~/.claude/skills/user-context/scripts/list-sessions.mjs --since 2026-03-04 --limit 10` |
+| `session-stats.mjs` | Quick stats for a session | `node ~/.claude/skills/user-context/scripts/session-stats.mjs --file <path>` |
+| `session-digest.mjs` | Extract conversation text only | `node ~/.claude/skills/user-context/scripts/session-digest.mjs --file <path>` |
+| `search-messages.mjs` | Keyword search across sessions | `node ~/.claude/skills/user-context/scripts/search-messages.mjs --query "prefer\|always" --role user` |
+| `extract-tool-flow.mjs` | Tool usage sequence | `node ~/.claude/skills/user-context/scripts/extract-tool-flow.mjs --file <path> --compact` |
 
-**Finding recent sessions**:
+### Recommended Workflow
 
-1. Use Glob to list project directories:
-   ```
-   Glob: ~/.claude/projects/*/
-   ```
-2. Within each project directory, use Glob to find JSONL session files:
-   ```
-   Glob: ~/.claude/projects/<project-dir>/*.jsonl
-   ```
-3. Results are sorted by modification time — focus on the most recent files first.
-4. Only process sessions you have not already processed (check your previous report for the last session timestamps you covered).
+1. **Discover sessions**: `list-sessions.mjs --since <last-run-date>` → get paths of unprocessed sessions
+2. **Quick overview**: `session-stats.mjs --file <path>` → see message count, tools used, duration
+3. **Read conversations**: `session-digest.mjs --file <path>` → get only user text + assistant text (filters out all tool_result, progress, thinking noise)
+4. **Targeted search**: `search-messages.mjs --query <pattern>` → find specific preference statements, corrections, or patterns across all sessions
+5. **Tool patterns**: `extract-tool-flow.mjs --file <path>` → see what tools succeeded/failed (useful for skill-evolver, less for user-context)
 
-**JSONL line format**: Each line is a JSON object. Key fields:
+### Script Details
 
-| Field | Description |
-|-------|-------------|
-| `type` | `"human"` (user message) or `"assistant"` (Claude response) |
-| `message.content` | Array of content blocks (text, tool_use, tool_result) |
-| `sessionId` | Unique session identifier |
-| `timestamp` | ISO 8601 timestamp |
-| `cwd` | Working directory at time of message |
+**list-sessions.mjs** — `--since <date>` `--project <pattern>` `--limit <n>`
+Output per line: `{session_id, project, path, modified, size_kb, user_msg_count, time_start, time_end}`
 
-**Browsing tips**:
-- Scan the most recent sessions first (last 24-48 hours since your last run).
-- Look for: user corrections ("no, use X instead"), explicit preference statements ("I always want..."), repeated patterns across sessions, emotional reactions, goal statements.
-- Skip tool_result blocks with large outputs — focus on human messages and the text portions of assistant messages.
-- Use Grep to search across multiple session files for keywords when looking for specific patterns.
+**session-digest.mjs** — `--file <path>` `--max-turns <n>`
+Output per line: `{role: "user"|"assistant", timestamp, text}`
+Only includes real user text messages and assistant text responses. Filters tool_results, thinking, progress. A 224MB file produces ~500KB of useful output in ~1 second.
+
+**search-messages.mjs** — `--query <regex>` `--since <date>` `--project <pattern>` `--role user|assistant|all` `--context <n>` `--limit <n>`
+Output per line: `{session_id, project, timestamp, role, text, context_before?}`
+Supports regex. `--context N` includes N preceding messages for context.
+
+**session-stats.mjs** — `--file <path>`
+Output: single JSON with `{session_id, cwd, git_branch, time_range, duration_minutes, user_messages, assistant_turns, tool_calls, errors_detected}`
+
+**extract-tool-flow.mjs** — `--file <path>` `--compact`
+Detailed output: `{timestamp, tool, input_summary, success, error_hint?}`
+`--compact` output: single line like `Bash→Read→Edit→Bash(err)→Bash`
+
+### What to Look For
+
+When scanning session digests for user-context signals:
+- Direct preference statements ("I always want...", "use X not Y", "我偏好...")
+- Corrections ("no, do it this way", "不是这样")
+- Repeated patterns across sessions
+- Emotional reactions and communication style
+- Goal statements and project context
 
 ---
 

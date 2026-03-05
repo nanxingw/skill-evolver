@@ -82,7 +82,52 @@ Adapt your communication style:
 
 ---
 
-## 4. Important Rules
+## 4. Session History Search (Runtime)
+
+When you need context from **past sessions** during normal work — for example, to recall a previous decision, find how a problem was solved before, or check what was discussed — use the search scripts at `~/.claude/skills/user-context/scripts/`.
+
+### When to Use
+
+- User asks "what did we do last time about X?" or "remember when we..."
+- You need to understand prior decisions before making changes to a codebase
+- User references a past conversation or session
+- You want to check if a similar problem was solved before
+
+### Quick Reference
+
+```bash
+# Find recent sessions for this project
+node ~/.claude/skills/user-context/scripts/list-sessions.mjs --project <name> --limit 5
+
+# Search for a keyword across all sessions
+node ~/.claude/skills/user-context/scripts/search-messages.mjs --query "migration|database" --limit 10
+
+# Get the conversation text from a specific session
+node ~/.claude/skills/user-context/scripts/session-digest.mjs --file <path>
+
+# Quick stats about a session
+node ~/.claude/skills/user-context/scripts/session-stats.mjs --file <path>
+
+# See what tools were used and what failed
+node ~/.claude/skills/user-context/scripts/extract-tool-flow.mjs --file <path> --compact
+```
+
+### Typical Runtime Flow
+
+1. `search-messages.mjs --query <keyword>` → find relevant past messages quickly
+2. If you need more context, use the `session_id` / `path` from the results to run `session-digest.mjs` on that specific session
+3. Use this context to inform your current response — but always prioritize the user's current instructions over past patterns
+
+### Notes
+
+- These scripts are **read-only** — they never modify session history
+- A 224MB session file processes in ~1 second, so there is no performance concern
+- Output is NDJSON (one JSON object per line), pipe-friendly for further processing
+- Use `--limit` to avoid overwhelming output when searching across many sessions
+
+---
+
+## 5. Important Rules
 
 - **Do not modify** any context or tmp files during normal runtime. Modifications are only performed during evolution cycles.
 - **Do not over-rely on tmp entries.** They are unconfirmed observations. Only context entries should drive behavior changes.

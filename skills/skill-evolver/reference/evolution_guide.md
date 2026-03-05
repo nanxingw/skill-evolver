@@ -6,44 +6,56 @@ You are not having a conversation. You are performing a structured data-evolutio
 
 ---
 
-## 1. Session Log Location and Format
+## 1. Session Search Scripts
 
-Claude Code stores conversation logs as JSONL files:
+Search scripts are installed at `~/.claude/skills/user-context/scripts/`. Use them via Bash to efficiently query session history — **never read raw JSONL files directly** (they can be 200MB+ and 99% is noise from tool_results and progress messages).
 
-```
-~/.claude/projects/<project-path-encoded>/<session-id>.jsonl
-```
+### Script Reference
 
-**Path encoding**: The absolute project path has its leading `/` removed and all remaining `/` replaced with `-`. For example, project at `/Users/alice/my-project` becomes `Users-alice-my-project`.
+| Script | Purpose | Example |
+|--------|---------|---------|
+| `list-sessions.mjs` | Find sessions by date/project | `node ~/.claude/skills/user-context/scripts/list-sessions.mjs --since 2026-03-04 --limit 10` |
+| `session-stats.mjs` | Quick stats for a session | `node ~/.claude/skills/user-context/scripts/session-stats.mjs --file <path>` |
+| `session-digest.mjs` | Extract conversation text only | `node ~/.claude/skills/user-context/scripts/session-digest.mjs --file <path>` |
+| `search-messages.mjs` | Keyword search across sessions | `node ~/.claude/skills/user-context/scripts/search-messages.mjs --query "error\|failed"` |
+| `extract-tool-flow.mjs` | Tool usage sequence + errors | `node ~/.claude/skills/user-context/scripts/extract-tool-flow.mjs --file <path> --compact` |
 
-**Finding recent sessions**:
+### Recommended Workflow for Technical Experience
 
-1. Use Glob to list project directories:
-   ```
-   Glob: ~/.claude/projects/*/
-   ```
-2. Within each project directory, use Glob to find JSONL session files:
-   ```
-   Glob: ~/.claude/projects/<project-dir>/*.jsonl
-   ```
-3. Results are sorted by modification time — focus on the most recent files first.
-4. Only process sessions you have not already processed (check your previous report for the last session timestamps you covered).
+1. **Discover sessions**: `list-sessions.mjs --since <last-run-date>` → get paths of unprocessed sessions
+2. **Quick triage**: `session-stats.mjs --file <path>` → check `errors_detected` and `tool_calls` to prioritize interesting sessions
+3. **Tool patterns**: `extract-tool-flow.mjs --file <path>` → identify success/failure sequences (this is your primary data source)
+4. **Conversation context**: `session-digest.mjs --file <path>` → understand what the user was trying to do when patterns occurred
+5. **Cross-session search**: `search-messages.mjs --query "error|failed|workaround"` → find recurring problems across projects
 
-**JSONL line format**: Each line is a JSON object. Key fields:
+### Script Details
 
-| Field | Description |
-|-------|-------------|
-| `type` | `"human"` (user message) or `"assistant"` (Claude response) |
-| `message.content` | Array of content blocks (text, tool_use, tool_result) |
-| `sessionId` | Unique session identifier |
-| `timestamp` | ISO 8601 timestamp |
-| `cwd` | Working directory at time of message |
+**list-sessions.mjs** — `--since <date>` `--project <pattern>` `--limit <n>`
+Output per line: `{session_id, project, path, modified, size_kb, user_msg_count, time_start, time_end}`
 
-**What to look for in logs**:
-- Successful patterns: tool sequences that worked well, commands that solved problems efficiently
-- Failures: approaches that failed, errors encountered, wasted effort
-- Tips: shortcuts, workarounds, or non-obvious techniques that proved useful
-- Patterns that repeat across different projects or sessions
+**session-stats.mjs** — `--file <path>`
+Output: single JSON with `{session_id, cwd, git_branch, time_range, duration_minutes, user_messages, assistant_turns, tool_calls, errors_detected}`
+Use `errors_detected > 0` to prioritize sessions with failures.
+
+**extract-tool-flow.mjs** — `--file <path>` `--compact`
+Detailed output: `{timestamp, tool, input_summary, success, error_hint?}`
+`--compact` output: single line like `Bash→Read→Edit→Bash(err)→Bash`
+This is your **primary tool** — it shows exactly what tool sequences worked and which failed.
+
+**session-digest.mjs** — `--file <path>` `--max-turns <n>`
+Output per line: `{role: "user"|"assistant", timestamp, text}`
+A 224MB file produces ~500KB output in ~1 second.
+
+**search-messages.mjs** — `--query <regex>` `--since <date>` `--project <pattern>` `--role user|assistant|all` `--context <n>` `--limit <n>`
+Output per line: `{session_id, project, timestamp, role, text, context_before?}`
+
+### What to Look For
+
+When scanning sessions for technical experience signals:
+- **Success patterns**: Tool sequences that efficiently solved problems (e.g., `Read→Grep→Edit` for targeted fixes)
+- **Failure patterns**: Tools that returned errors, approaches that had to be retried or abandoned
+- **Useful tips**: Non-obvious commands, flags, or workarounds that proved effective
+- **Cross-project patterns**: Similar approaches or errors appearing in different projects
 
 ---
 
