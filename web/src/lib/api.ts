@@ -60,3 +60,117 @@ export async function updateConfig(config: Record<string, unknown>) {
     body: JSON.stringify(config),
   });
 }
+
+// ---------------------------------------------------------------------------
+// Task types
+// ---------------------------------------------------------------------------
+
+export interface Task {
+  id: string;
+  name: string;
+  description: string;
+  type: "recurring" | "one-shot";
+  schedule?: string;
+  scheduled_at?: string;
+  prompt: string;
+  model?: string;
+  source: "user" | "agent";
+  status: string;
+  approved: boolean;
+  created_at: string;
+  last_run: string | null;
+  next_run: string | null;
+  run_count: number;
+  max_runs: number | null;
+  tags: string[];
+  memory_ref?: string;
+}
+
+export interface Idea {
+  idea: string;
+  reason: string;
+  added: string;
+}
+
+// ---------------------------------------------------------------------------
+// Task API
+// ---------------------------------------------------------------------------
+
+export async function fetchTasks(status?: string): Promise<Task[]> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : "";
+  const data = await request<{ tasks: Task[] }>(`/api/tasks${query}`);
+  return data.tasks;
+}
+
+export async function fetchTask(id: string): Promise<Task> {
+  return request<Task>(`/api/tasks/${encodeURIComponent(id)}`);
+}
+
+export async function createTask(task: Partial<Task>): Promise<Task> {
+  return request<Task>("/api/tasks", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(task),
+  });
+}
+
+export async function updateTask(id: string, updates: Partial<Task>): Promise<Task> {
+  return request<Task>(`/api/tasks/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(updates),
+  });
+}
+
+export async function deleteTask(id: string): Promise<void> {
+  await request<void>(`/api/tasks/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export async function approveTask(id: string): Promise<Task> {
+  return request<Task>(`/api/tasks/${encodeURIComponent(id)}/approve`, { method: "POST" });
+}
+
+export async function rejectTask(id: string): Promise<void> {
+  await request<void>(`/api/tasks/${encodeURIComponent(id)}/reject`, { method: "POST" });
+}
+
+export async function triggerTask(id: string): Promise<void> {
+  await request<void>(`/api/tasks/${encodeURIComponent(id)}/trigger`, { method: "POST" });
+}
+
+export async function fetchTaskRuns(id: string): Promise<{ filename: string; date: string }[]> {
+  const data = await request<{ runs: { filename: string; date: string }[] }>(
+    `/api/tasks/${encodeURIComponent(id)}/runs`
+  );
+  return data.runs;
+}
+
+export async function fetchTaskRun(id: string, filename: string): Promise<string> {
+  const data = await request<{ content: string }>(
+    `/api/tasks/${encodeURIComponent(id)}/runs/${encodeURIComponent(filename)}`
+  );
+  return data.content;
+}
+
+export async function fetchTaskArtifacts(id: string): Promise<string[]> {
+  const data = await request<{ artifacts: string[] }>(
+    `/api/tasks/${encodeURIComponent(id)}/artifacts`
+  );
+  return data.artifacts;
+}
+
+export async function fetchTaskArtifact(id: string, path: string): Promise<string> {
+  const data = await request<{ content: string }>(
+    `/api/tasks/${encodeURIComponent(id)}/artifacts/${encodeURIComponent(path)}`
+  );
+  return data.content;
+}
+
+export async function openTaskArtifacts(id: string): Promise<void> {
+  await request<void>(`/api/tasks/${encodeURIComponent(id)}/artifacts/open`, { method: "POST" });
+}
+
+export async function fetchIdeas(): Promise<Idea[]> {
+  const data = await request<{ ideas: Idea[] }>("/api/ideas");
+  return data.ideas;
+}

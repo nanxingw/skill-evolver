@@ -1,6 +1,6 @@
 import type { Server } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
-import { orchestrator } from "../orchestrator.js";
+import { executor } from "../executor.js";
 
 export interface WsBroadcast {
   broadcast: (event: string, data: unknown) => void;
@@ -22,8 +22,8 @@ export function setupWebSocket(server: Server): WsBroadcast {
     const status = {
       event: "status",
       data: {
-        state: orchestrator.state,
-        lastRun: orchestrator.lastRun?.toISOString() ?? null,
+        state: executor.state,
+        lastRun: executor.lastRun?.toISOString() ?? null,
       },
       timestamp: new Date().toISOString(),
     };

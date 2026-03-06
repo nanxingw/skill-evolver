@@ -1,11 +1,12 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import Dashboard from "./pages/Dashboard.svelte";
+  import Tasks from "./pages/Tasks.svelte";
   import Reports from "./pages/Reports.svelte";
   import DataBrowser from "./pages/DataBrowser.svelte";
   import Settings from "./pages/Settings.svelte";
 
-  const tabs = ["Dashboard", "Reports", "Data Browser", "Settings"] as const;
+  const tabs = ["Dashboard", "Tasks", "Reports", "Data Browser", "Settings"] as const;
   type Tab = (typeof tabs)[number];
 
   let activeTab: Tab = $state("Dashboard");
@@ -14,11 +15,13 @@
   let CurrentPage = $derived(
     activeTab === "Dashboard"
       ? Dashboard
-      : activeTab === "Reports"
-        ? Reports
-        : activeTab === "Data Browser"
-          ? DataBrowser
-          : Settings
+      : activeTab === "Tasks"
+        ? Tasks
+        : activeTab === "Reports"
+          ? Reports
+          : activeTab === "Data Browser"
+            ? DataBrowser
+            : Settings
   );
 
   function toggleTheme() {

@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { loadConfig, saveConfig, type Config, getConfigDir } from "./config.js";
-import { orchestrator } from "./orchestrator.js";
+import { executor, runEvolutionCycle } from "./executor.js";
 import { startScheduler, stopScheduler } from "./scheduler.js";
 import { readFile, writeFile, unlink, mkdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -88,20 +88,33 @@ export function runCLI(): void {
       const { wsBroadcast } = startServer(config.port);
       console.log(`Dashboard: http://localhost:${config.port}`);
 
-      // Bridge orchestrator events → WebSocket broadcast
-      orchestrator.on("cycle_start", () => {
+      // Bridge executor events → WebSocket broadcast
+      executor.on("cycle_start", () => {
         wsBroadcast.broadcast("cycle_start", {});
       });
-      orchestrator.on("cycle_progress", (text: string) => {
+      executor.on("cycle_progress", (text: string) => {
         wsBroadcast.broadcast("cycle_progress", { text });
       });
-      orchestrator.on("cycle_end", (result: unknown) => {
+      executor.on("cycle_end", (result: unknown) => {
         wsBroadcast.broadcast("cycle_end", { result });
       });
-      orchestrator.on("cycle_error", (err: unknown) => {
+      executor.on("cycle_error", (err: unknown) => {
         wsBroadcast.broadcast("cycle_error", {
           message: err instanceof Error ? err.message : String(err),
         });
+      });
+      // Job-level events for tasks
+      executor.on("job_start", (data: unknown) => {
+        wsBroadcast.broadcast("job_start", data);
+      });
+      executor.on("job_progress", (data: unknown) => {
+        wsBroadcast.broadcast("job_progress", data);
+      });
+      executor.on("job_end", (data: unknown) => {
+        wsBroadcast.broadcast("job_end", data);
+      });
+      executor.on("job_error", (data: unknown) => {
+        wsBroadcast.broadcast("job_error", data);
       });
 
       // Keep process alive
@@ -144,11 +157,11 @@ export function runCLI(): void {
     .description("Run a single evolution cycle")
     .action(async () => {
       console.log("Starting evolution cycle...");
-      orchestrator.on("cycle_progress", (text: string) => {
+      executor.on("cycle_progress", (text: string) => {
         process.stdout.write(text);
       });
       try {
-        const result = await orchestrator.runEvolutionCycle();
+        const result = await runEvolutionCycle();
         console.log(`\n\nEvolution cycle completed in ${Math.round(result.duration / 1000)}s`);
       } catch (err) {
         console.error("Evolution cycle failed:", err instanceof Error ? err.message : err);
@@ -188,9 +201,9 @@ export function runCLI(): void {
       console.log(`Interval: ${config.interval}`);
       console.log(`Model: ${config.model}`);
       console.log(`Auto-run: ${config.autoRun}`);
-      if (orchestrator.lastRun) {
-        console.log(`Last run: ${orchestrator.lastRun.toISOString()}`);
-        console.log(`Last result: ${orchestrator.lastResult?.success ? "success" : "failed"}`);
+      if (executor.lastRun) {
+        console.log(`Last run: ${executor.lastRun.toISOString()}`);
+        console.log(`Last result: ${executor.lastResult?.success ? "success" : "failed"}`);
       } else {
         console.log("Last run: never");
       }
@@ -239,6 +252,166 @@ export function runCLI(): void {
       }
       await saveConfig(config);
       console.log(`${key}: ${typedConfig[key]}`);
+    });
+
+  // ---------------------------------------------------------------------------
+  // Task subcommands
+  // ---------------------------------------------------------------------------
+
+  const taskCmd = program
+    .command("task")
+    .description("Manage tasks");
+
+  taskCmd
+    .command("list")
+    .description("List tasks")
+    .option("-s, --status <status>", "Filter by status")
+    .action(async (opts: { status?: string }) => {
+      const { listTasks } = await import("./task-store.js");
+      const tasks = await listTasks(opts.status ? { status: opts.status } : undefined);
+      if (tasks.length === 0) {
+        console.log("No tasks found.");
+        return;
+      }
+      for (const t of tasks) {
+        const statusIcon = t.status === "active" ? "●" : t.status === "paused" ? "○" : t.status === "pending" ? "◌" : t.status === "failed" ? "✗" : "✓";
+        console.log(`  ${statusIcon} [${t.id}] ${t.name} (${t.type}, ${t.status})`);
+      }
+    });
+
+  taskCmd
+    .command("create")
+    .description("Create a new task interactively")
+    .action(async () => {
+      const readline = await import("node:readline");
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      const ask = (q: string): Promise<string> => new Promise((res) => rl.question(q, res));
+
+      try {
+        const name = await ask("Task name: ");
+        const description = await ask("Description (optional): ");
+        const type = (await ask("Type (recurring/one-shot) [recurring]: ")) || "recurring";
+        let schedule: string | undefined;
+        let scheduled_at: string | undefined;
+        if (type === "recurring") {
+          schedule = (await ask("Cron schedule [0 8 * * *]: ")) || "0 8 * * *";
+        } else {
+          const at = await ask("Scheduled at (ISO datetime, optional): ");
+          if (at) scheduled_at = new Date(at).toISOString();
+        }
+        const prompt = await ask("Prompt: ");
+        const model = await ask("Model (optional, e.g. sonnet/opus/haiku): ");
+        const tagsRaw = await ask("Tags (comma-separated, optional): ");
+
+        const { createTask } = await import("./task-store.js");
+        const task = await createTask({
+          name, description,
+          type: type as "recurring" | "one-shot",
+          schedule, scheduled_at,
+          prompt,
+          model: model || undefined,
+          source: "user",
+          status: "active",
+          approved: true,
+          next_run: null,
+          max_runs: null,
+          tags: tagsRaw ? tagsRaw.split(",").map((t) => t.trim()).filter(Boolean) : [],
+        });
+        console.log(`Task created: ${task.id}`);
+      } finally {
+        rl.close();
+      }
+    });
+
+  taskCmd
+    .command("run <id>")
+    .description("Run a task immediately")
+    .action(async (id: string) => {
+      const { getTask, getArtifactsDir, getRunsDir } = await import("./task-store.js");
+      const { buildTaskPrompt } = await import("./prompt.js");
+      const task = await getTask(id);
+      const config = await loadConfig();
+      const artifactsDir = await getArtifactsDir(id);
+      const runsDir = await getRunsDir(id);
+      const now = new Date();
+      const ts = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}_${String(now.getHours()).padStart(2, "0")}-${String(now.getMinutes()).padStart(2, "0")}`;
+      const reportPath = join(runsDir, `${ts}.md`);
+      const prompt = buildTaskPrompt(task, artifactsDir, reportPath);
+
+      console.log(`Running task: ${task.name}...`);
+      executor.on("job_progress", (data: { taskId?: string; text?: string }) => {
+        if (data.taskId === id && data.text) {
+          process.stdout.write(data.text);
+        }
+      });
+
+      const job = {
+        id: `task-${id}-${Date.now()}`,
+        type: "task" as const,
+        prompt,
+        model: task.model || config.model,
+        taskId: id,
+        taskName: task.name,
+      };
+
+      try {
+        const result = await executor.run(job);
+        console.log(`\nTask completed in ${Math.round(result.duration / 1000)}s`);
+      } catch (err) {
+        console.error("Task failed:", err instanceof Error ? err.message : err);
+        process.exit(1);
+      }
+    });
+
+  taskCmd
+    .command("pause <id>")
+    .description("Pause a task")
+    .action(async (id: string) => {
+      const { updateTask } = await import("./task-store.js");
+      await updateTask(id, { status: "paused" });
+      console.log(`Task ${id} paused.`);
+    });
+
+  taskCmd
+    .command("resume <id>")
+    .description("Resume a paused task")
+    .action(async (id: string) => {
+      const { updateTask } = await import("./task-store.js");
+      await updateTask(id, { status: "active" });
+      console.log(`Task ${id} resumed.`);
+    });
+
+  taskCmd
+    .command("delete <id>")
+    .description("Delete a task")
+    .action(async (id: string) => {
+      const { deleteTask } = await import("./task-store.js");
+      await deleteTask(id);
+      console.log(`Task ${id} deleted.`);
+    });
+
+  taskCmd
+    .command("approve <id>")
+    .description("Approve a pending task")
+    .action(async (id: string) => {
+      const { updateTask } = await import("./task-store.js");
+      await updateTask(id, { status: "active", approved: true });
+      console.log(`Task ${id} approved.`);
+    });
+
+  taskCmd
+    .command("reject <id>")
+    .description("Reject a pending task")
+    .action(async (id: string) => {
+      const { getTask, updateTask, addRejected } = await import("./task-store.js");
+      const task = await getTask(id);
+      await addRejected({
+        name: task.name,
+        reason: "Rejected by user via CLI",
+        similarity_keywords: task.tags ?? [],
+      });
+      await updateTask(id, { status: "expired" as "pending" });
+      console.log(`Task ${id} rejected.`);
     });
 
   program.parse();
