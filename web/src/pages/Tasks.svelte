@@ -339,7 +339,7 @@
           style="--card-accent: {statusColor(task.status)}"
         >
           <!-- Card header (always visible) -->
-          <button class="card-header" onclick={() => toggleExpand(task.id)}>
+          <div class="card-header" role="button" tabindex="0" onclick={() => toggleExpand(task.id)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleExpand(task.id); }}>
             <div class="card-left">
               <span
                 class="status-dot"
@@ -366,7 +366,7 @@
               </div>
             </div>
 
-            <div class="card-actions" onclick={(e) => e.stopPropagation()}>
+            <div class="card-actions" role="group" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
               {#if task.status === "pending" && !task.approved}
                 <button class="action-btn approve" onclick={(e) => handleApprove(e, task.id)}>Approve</button>
                 <button class="action-btn reject" onclick={(e) => handleReject(e, task.id)}>Reject</button>
@@ -386,7 +386,7 @@
                 <button class="action-btn ghost danger" onclick={(e) => handleDelete(e, task.id)}>Del</button>
               {/if}
             </div>
-          </button>
+          </div>
 
           <!-- Tags row -->
           {#if task.tags && task.tags.length > 0}
@@ -509,11 +509,11 @@
 
   <!-- Create Modal -->
   {#if showModal}
-    <div class="modal-overlay" onclick={closeModal}>
-      <div class="modal" onclick={(e) => e.stopPropagation()}>
+    <div class="modal-overlay" role="button" tabindex="-1" aria-label="Close modal" onclick={closeModal} onkeydown={(e) => { if (e.key === 'Escape') closeModal(); }}>
+      <div class="modal" role="dialog" aria-modal="true" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
         <div class="modal-header">
           <h3>New Task</h3>
-          <button class="modal-close" onclick={closeModal}>
+          <button class="modal-close" aria-label="Close" onclick={closeModal}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
         </div>
