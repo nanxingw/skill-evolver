@@ -1,8 +1,7 @@
 // Task store — manages persistent task definitions
-// This module will be fully implemented alongside the task system.
-// For now it provides the types and stubs needed by executor/scheduler/prompt.
+// This module provides the types and CRUD needed by executor/scheduler/prompt/api/cli.
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import yaml from "js-yaml";
@@ -20,8 +19,16 @@ export interface Task {
   name: string;
   description?: string;
   prompt: string;
+  type?: "recurring" | "one-shot";
   schedule?: TaskSchedule;
-  status: "active" | "paused" | "completed" | "running";
+  scheduled_at?: string;
+  status: "active" | "paused" | "completed" | "running" | "pending" | "expired";
+  approved?: boolean;
+  model?: string;
+  tags?: string[];
+  source?: string;
+  next_run?: string | null;
+  max_runs?: number | null;
   runCount: number;
   lastRun?: string;    // ISO date string
   createdAt: string;   // ISO date string
@@ -57,10 +64,17 @@ async function writeTasksFile(data: TasksFile): Promise<void> {
   await writeFile(TASKS_FILE, raw, "utf-8");
 }
 
+function generateId(): string {
+  return `t-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
 // ── Public API ───────────────────────────────────────────────────────────────
 
-export async function listTasks(): Promise<Task[]> {
+export async function listTasks(filter?: { status?: string }): Promise<Task[]> {
   const data = await readTasksFile();
+  if (filter?.status) {
+    return data.tasks.filter(t => t.status === filter.status);
+  }
   return data.tasks;
 }
 
@@ -69,10 +83,17 @@ export async function getTask(id: string): Promise<Task | undefined> {
   return data.tasks.find(t => t.id === id);
 }
 
-export async function createTask(task: Task): Promise<void> {
+export async function createTask(input: Omit<Task, "id" | "runCount" | "createdAt"> & { id?: string; runCount?: number; createdAt?: string }): Promise<Task> {
   const data = await readTasksFile();
+  const task: Task = {
+    ...input,
+    id: input.id ?? generateId(),
+    runCount: input.runCount ?? 0,
+    createdAt: input.createdAt ?? new Date().toISOString(),
+  };
   data.tasks.push(task);
   await writeTasksFile(data);
+  return task;
 }
 
 export async function updateTask(id: string, updates: Partial<Task>): Promise<Task | undefined> {
@@ -100,16 +121,19 @@ export interface RunInfo {
   date: Date;
 }
 
+export function getRunsDir(taskId: string): string {
+  return join(TASKS_DIR, taskId, "reports");
+}
+
 export async function listRuns(taskId: string): Promise<RunInfo[]> {
-  const dir = join(TASKS_DIR, taskId, "reports");
+  const dir = getRunsDir(taskId);
   try {
     await mkdir(dir, { recursive: true });
-    const { readdir: rd } = await import("node:fs/promises");
-    const files = await rd(dir);
+    const files = await readdir(dir);
     return files
-      .filter(f => f.endsWith("_report.md"))
+      .filter(f => f.endsWith(".md"))
       .map(filename => {
-        const match = filename.match(/^(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2})_report\.md$/);
+        const match = filename.match(/^(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2})/);
         const date = match
           ? new Date(`${match[1]}T${match[2].replace("-", ":")}:00`)
           : new Date(0);
@@ -122,7 +146,7 @@ export async function listRuns(taskId: string): Promise<RunInfo[]> {
 }
 
 export async function readRun(taskId: string, filename: string): Promise<string> {
-  return readFile(join(TASKS_DIR, taskId, "reports", filename), "utf-8");
+  return readFile(join(getRunsDir(taskId), filename), "utf-8");
 }
 
 // ── Artifacts ────────────────────────────────────────────────────────────────
@@ -135,8 +159,7 @@ export async function listArtifacts(taskId: string): Promise<string[]> {
   const dir = getArtifactsDir(taskId);
   try {
     await mkdir(dir, { recursive: true });
-    const { readdir: rd } = await import("node:fs/promises");
-    return await rd(dir);
+    return await readdir(dir);
   } catch {
     return [];
   }
@@ -161,7 +184,7 @@ export async function listIdeas(): Promise<unknown[]> {
   }
 }
 
-export async function addRejected(entry: { idea: string; reason: string; date: string }): Promise<void> {
+export async function addRejected(entry: Record<string, unknown>): Promise<void> {
   await ensureTasksDir();
   let entries: unknown[] = [];
   try {
@@ -169,7 +192,7 @@ export async function addRejected(entry: { idea: string; reason: string; date: s
     const parsed = yaml.load(raw) as { entries?: unknown[] } | null;
     entries = parsed?.entries ?? [];
   } catch { /* empty */ }
-  entries.push(entry);
+  entries.push({ ...entry, date: entry.date ?? new Date().toISOString() });
   const raw = yaml.dump({ entries }, { lineWidth: -1 });
   await writeFile(REJECTED_FILE, raw, "utf-8");
 }

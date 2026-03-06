@@ -1,21 +1,30 @@
 import { Hono } from "hono";
-import { readFile, readdir } from "node:fs/promises";
+import { readFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import yaml from "js-yaml";
 import { executor, runEvolutionCycle } from "../executor.js";
 import { isSchedulerRunning, getNextRun, reschedule } from "../scheduler.js";
-import { listReports, readReport, getReportsDir } from "../reports.js";
+import { listReports, readReport } from "../reports.js";
 import { loadConfig, saveConfig, type Config } from "../config.js";
 import {
   listTasks, getTask, createTask as storeCreateTask, updateTask as storeUpdateTask,
   deleteTask as storeDeleteTask, listRuns, readRun, listArtifacts, readArtifact,
-  getArtifactsDir, getRunsDir, addRejected, listIdeas,
-  type Task,
+  getArtifactsDir, addRejected, listIdeas,
 } from "../task-store.js";
 import { buildTaskPrompt } from "../prompt.js";
 
 export const apiRoutes = new Hono();
+
+// ── Helper: compute a report path for a task run ────────────────────────────
+function taskReportDir(taskId: string): string {
+  return join(homedir(), ".skill-evolver", "tasks", taskId, "reports");
+}
+
+function currentTs(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}_${String(now.getHours()).padStart(2, "0")}-${String(now.getMinutes()).padStart(2, "0")}`;
+}
 
 // GET /api/status
 apiRoutes.get("/api/status", (c) => {
@@ -33,7 +42,6 @@ apiRoutes.post("/api/trigger", (c) => {
   runEvolutionCycle().catch(() => {
     // errors emitted via executor events
   }).finally(() => {
-    // Reschedule so next auto-run is interval-after-this-run
     reschedule();
   });
   return c.json({ triggered: true });
@@ -121,12 +129,7 @@ apiRoutes.get("/api/context/:pillar", async (c) => {
 apiRoutes.get("/api/skills", async (c) => {
   const home = homedir();
   const permittedPath = join(
-    home,
-    ".claude",
-    "skills",
-    "skill-evolver",
-    "reference",
-    "permitted_skills.md",
+    home, ".claude", "skills", "skill-evolver", "reference", "permitted_skills.md",
   );
   const skillsBase = join(home, ".claude", "skills");
 
@@ -181,7 +184,10 @@ apiRoutes.put("/api/config", async (c) => {
 apiRoutes.get("/api/tasks", async (c) => {
   const status = c.req.query("status");
   try {
-    const tasks = await listTasks(status ? { status } : undefined);
+    let tasks = await listTasks();
+    if (status) {
+      tasks = tasks.filter((t) => t.status === status);
+    }
     return c.json({ tasks });
   } catch {
     return c.json({ tasks: [] });
@@ -193,6 +199,7 @@ apiRoutes.get("/api/tasks/:id", async (c) => {
   const id = c.req.param("id");
   try {
     const task = await getTask(id);
+    if (!task) return c.json({ error: "Task not found" }, 404);
     return c.json(task);
   } catch {
     return c.json({ error: "Task not found" }, 404);
@@ -203,7 +210,36 @@ apiRoutes.get("/api/tasks/:id", async (c) => {
 apiRoutes.post("/api/tasks", async (c) => {
   try {
     const body = await c.req.json();
-    const task = await storeCreateTask(body);
+    // Generate ID and fill defaults
+    const now = new Date();
+    const tsId = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}_${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`;
+    const hex = Math.random().toString(16).slice(2, 5);
+    const id = body.id || `t_${tsId}_${hex}`;
+
+    // Build schedule object from frontend fields
+    let schedule = body.schedule;
+    if (typeof schedule === "string") {
+      schedule = { type: "cron" as const, cron: schedule };
+    }
+    if (!schedule && body.scheduled_at) {
+      schedule = { type: "one-shot" as const, at: body.scheduled_at };
+    }
+
+    const task = {
+      id,
+      name: body.name || "Untitled",
+      description: body.description,
+      prompt: body.prompt || "",
+      schedule,
+      status: body.status || "active",
+      approved: body.approved ?? true,
+      model: body.model,
+      tags: body.tags || [],
+      runCount: 0,
+      createdAt: now.toISOString(),
+    };
+
+    await storeCreateTask(task);
     return c.json(task, 201);
   } catch (err) {
     return c.json({ error: err instanceof Error ? err.message : "Failed to create task" }, 400);
@@ -216,9 +252,10 @@ apiRoutes.put("/api/tasks/:id", async (c) => {
   try {
     const body = await c.req.json();
     const task = await storeUpdateTask(id, body);
+    if (!task) return c.json({ error: "Task not found" }, 404);
     return c.json(task);
-  } catch (err) {
-    return c.json({ error: err instanceof Error ? err.message : "Task not found" }, 404);
+  } catch {
+    return c.json({ error: "Task not found" }, 404);
   }
 });
 
@@ -238,6 +275,7 @@ apiRoutes.post("/api/tasks/:id/approve", async (c) => {
   const id = c.req.param("id");
   try {
     const task = await storeUpdateTask(id, { status: "active", approved: true });
+    if (!task) return c.json({ error: "Task not found" }, 404);
     return c.json(task);
   } catch {
     return c.json({ error: "Task not found" }, 404);
@@ -249,12 +287,13 @@ apiRoutes.post("/api/tasks/:id/reject", async (c) => {
   const id = c.req.param("id");
   try {
     const task = await getTask(id);
+    if (!task) return c.json({ error: "Task not found" }, 404);
     await addRejected({
-      name: task.name,
+      idea: task.name,
       reason: "Rejected by user via dashboard",
-      similarity_keywords: task.tags ?? [],
+      date: new Date().toISOString(),
     });
-    await storeUpdateTask(id, { status: "expired" as Task["status"] });
+    await storeUpdateTask(id, { status: "expired" });
     return c.json({ rejected: true });
   } catch {
     return c.json({ error: "Task not found" }, 404);
@@ -266,12 +305,13 @@ apiRoutes.post("/api/tasks/:id/trigger", async (c) => {
   const id = c.req.param("id");
   try {
     const task = await getTask(id);
+    if (!task) return c.json({ error: "Task not found" }, 404);
     const config = await loadConfig();
-    const artifactsDir = await getArtifactsDir(id);
-    const runsDir = await getRunsDir(id);
-    const now = new Date();
-    const ts = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}_${String(now.getHours()).padStart(2, "0")}-${String(now.getMinutes()).padStart(2, "0")}`;
-    const reportPath = join(runsDir, `${ts}.md`);
+    const artifactsDir = getArtifactsDir(id);
+    await mkdir(artifactsDir, { recursive: true });
+    const reportsDir = taskReportDir(id);
+    await mkdir(reportsDir, { recursive: true });
+    const reportPath = join(reportsDir, `${currentTs()}_report.md`);
     const prompt = buildTaskPrompt(task, artifactsDir, reportPath);
     const job = {
       id: `task-${id}-${Date.now()}`,
@@ -281,7 +321,6 @@ apiRoutes.post("/api/tasks/:id/trigger", async (c) => {
       taskId: id,
       taskName: task.name,
     };
-    // Run asynchronously
     executor.run(job).catch(() => { /* errors emitted via events */ });
     return c.json({ triggered: true });
   } catch {
@@ -332,7 +371,7 @@ apiRoutes.get("/api/tasks/:id/artifacts", async (c) => {
 apiRoutes.post("/api/tasks/:id/artifacts/open", async (c) => {
   const id = c.req.param("id");
   try {
-    const dir = await getArtifactsDir(id);
+    const dir = getArtifactsDir(id);
     const { exec: execCb } = await import("node:child_process");
     execCb(`open "${dir}"`);
     return c.json({ opened: true });

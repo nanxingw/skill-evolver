@@ -268,14 +268,18 @@ export function runCLI(): void {
     .option("-s, --status <status>", "Filter by status")
     .action(async (opts: { status?: string }) => {
       const { listTasks } = await import("./task-store.js");
-      const tasks = await listTasks(opts.status ? { status: opts.status } : undefined);
+      let tasks = await listTasks();
+      if (opts.status) {
+        tasks = tasks.filter((t) => t.status === opts.status);
+      }
       if (tasks.length === 0) {
         console.log("No tasks found.");
         return;
       }
       for (const t of tasks) {
-        const statusIcon = t.status === "active" ? "●" : t.status === "paused" ? "○" : t.status === "pending" ? "◌" : t.status === "failed" ? "✗" : "✓";
-        console.log(`  ${statusIcon} [${t.id}] ${t.name} (${t.type}, ${t.status})`);
+        const statusIcon = t.status === "active" ? "●" : t.status === "paused" ? "○" : t.status === "pending" ? "◌" : t.status === "expired" ? "✗" : "✓";
+        const schedType = t.schedule?.type ?? "none";
+        console.log(`  ${statusIcon} [${t.id}] ${t.name} (${schedType}, ${t.status})`);
       }
     });
 
@@ -304,20 +308,28 @@ export function runCLI(): void {
         const tagsRaw = await ask("Tags (comma-separated, optional): ");
 
         const { createTask } = await import("./task-store.js");
-        const task = await createTask({
+        const taskSchedule = type === "recurring" && schedule
+          ? { type: "cron" as const, cron: schedule }
+          : scheduled_at
+            ? { type: "one-shot" as const, at: scheduled_at }
+            : undefined;
+        const now = new Date();
+        const tsId = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}_${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`;
+        const hex = Math.random().toString(16).slice(2, 5);
+        const taskId = `t_${tsId}_${hex}`;
+        await createTask({
+          id: taskId,
           name, description,
-          type: type as "recurring" | "one-shot",
-          schedule, scheduled_at,
+          schedule: taskSchedule,
           prompt,
           model: model || undefined,
-          source: "user",
           status: "active",
           approved: true,
-          next_run: null,
-          max_runs: null,
           tags: tagsRaw ? tagsRaw.split(",").map((t) => t.trim()).filter(Boolean) : [],
+          runCount: 0,
+          createdAt: now.toISOString(),
         });
-        console.log(`Task created: ${task.id}`);
+        console.log(`Task created: ${taskId}`);
       } finally {
         rl.close();
       }
@@ -327,15 +339,19 @@ export function runCLI(): void {
     .command("run <id>")
     .description("Run a task immediately")
     .action(async (id: string) => {
-      const { getTask, getArtifactsDir, getRunsDir } = await import("./task-store.js");
+      const { getTask, getArtifactsDir } = await import("./task-store.js");
       const { buildTaskPrompt } = await import("./prompt.js");
+      const { mkdir: mkdirAsync } = await import("node:fs/promises");
       const task = await getTask(id);
+      if (!task) { console.error(`Task not found: ${id}`); process.exit(1); }
       const config = await loadConfig();
-      const artifactsDir = await getArtifactsDir(id);
-      const runsDir = await getRunsDir(id);
+      const artifactsDir = getArtifactsDir(id);
+      await mkdirAsync(artifactsDir, { recursive: true });
+      const reportsDir = join(homedir(), ".skill-evolver", "tasks", id, "reports");
+      await mkdirAsync(reportsDir, { recursive: true });
       const now = new Date();
       const ts = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}_${String(now.getHours()).padStart(2, "0")}-${String(now.getMinutes()).padStart(2, "0")}`;
-      const reportPath = join(runsDir, `${ts}.md`);
+      const reportPath = join(reportsDir, `${ts}_report.md`);
       const prompt = buildTaskPrompt(task, artifactsDir, reportPath);
 
       console.log(`Running task: ${task.name}...`);
@@ -405,12 +421,13 @@ export function runCLI(): void {
     .action(async (id: string) => {
       const { getTask, updateTask, addRejected } = await import("./task-store.js");
       const task = await getTask(id);
+      if (!task) { console.error(`Task not found: ${id}`); process.exit(1); }
       await addRejected({
-        name: task.name,
+        idea: task.name,
         reason: "Rejected by user via CLI",
-        similarity_keywords: task.tags ?? [],
+        date: new Date().toISOString(),
       });
-      await updateTask(id, { status: "expired" as "pending" });
+      await updateTask(id, { status: "expired" });
       console.log(`Task ${id} rejected.`);
     });
 
