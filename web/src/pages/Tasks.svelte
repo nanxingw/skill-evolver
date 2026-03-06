@@ -32,6 +32,10 @@
   // Running tasks (tracked via WS)
   let runningTasks: Set<string> = $state(new Set());
 
+  // Delete confirmation
+  let confirmDeleteId: string | null = $state(null);
+  let confirmTimer: ReturnType<typeof setTimeout> | null = $state(null);
+
   // Create form state
   let formName: string = $state("");
   let formDesc: string = $state("");
@@ -153,8 +157,26 @@
     } catch { /* ignore */ }
   }
 
-  async function handleDelete(e: Event, id: string) {
+  function handleDeleteClick(e: Event, id: string) {
     e.stopPropagation();
+    if (confirmDeleteId === id) {
+      // Second click — actually delete
+      doDelete(id);
+    } else {
+      // First click — enter confirmation state
+      if (confirmTimer) clearTimeout(confirmTimer);
+      confirmDeleteId = id;
+      confirmTimer = setTimeout(() => {
+        confirmDeleteId = null;
+        confirmTimer = null;
+      }, 3000);
+    }
+  }
+
+  async function doDelete(id: string) {
+    if (confirmTimer) clearTimeout(confirmTimer);
+    confirmDeleteId = null;
+    confirmTimer = null;
     try {
       await deleteTask(id);
       tasks = tasks.filter((t) => t.id !== id);
@@ -235,9 +257,39 @@
     }
   }
 
+  function describeCron(cron: string): string {
+    const parts = cron.trim().split(/\s+/);
+    if (parts.length !== 5) return cron;
+    const [min, hour, dom, mon, dow] = parts;
+    const dowNames = ["日", "一", "二", "三", "四", "五", "六"];
+    const time = `${hour.padStart(2, "0")}:${min.padStart(2, "0")}`;
+
+    // Every day at HH:MM
+    if (dom === "*" && mon === "*" && dow === "*") {
+      return `每天 ${time}`;
+    }
+    // Specific weekdays
+    if (dom === "*" && mon === "*" && dow !== "*") {
+      const days = dow.split(",").map((d) => `周${dowNames[+d] ?? d}`).join("、");
+      return `${days} ${time}`;
+    }
+    // Specific days of month
+    if (dom !== "*" && mon === "*" && dow === "*") {
+      return `每月 ${dom}日 ${time}`;
+    }
+    // Step-based (e.g., */30 * * * *)
+    if (min.startsWith("*/")) {
+      return `每 ${min.slice(2)} 分钟`;
+    }
+    if (hour.startsWith("*/")) {
+      return `每 ${hour.slice(2)} 小时`;
+    }
+    return cron;
+  }
+
   function scheduleLabel(task: Task): string {
     if (task.schedule?.type === "cron" && task.schedule.cron) {
-      return task.schedule.cron;
+      return describeCron(task.schedule.cron);
     }
     if (task.schedule?.type === "one-shot" && task.schedule.at) {
       return new Date(task.schedule.at).toLocaleString();
@@ -392,7 +444,12 @@
                     {task.status === "paused" ? "Resume" : "Pause"}
                   </button>
                 {/if}
-                <button class="action-btn ghost danger" onclick={(e) => handleDelete(e, task.id)}>Del</button>
+                <button
+                  class="action-btn ghost"
+                  class:danger={confirmDeleteId !== task.id}
+                  class:confirm-del={confirmDeleteId === task.id}
+                  onclick={(e) => handleDeleteClick(e, task.id)}
+                >{confirmDeleteId === task.id ? "Confirm?" : "Del"}</button>
               {/if}
             </div>
           </div>
@@ -857,6 +914,19 @@
   .action-btn.ghost.danger:hover {
     border-color: var(--error);
     color: var(--error);
+  }
+
+  .action-btn.confirm-del {
+    background: var(--error);
+    border-color: var(--error);
+    color: #fff;
+    animation: shake 0.3s ease-in-out;
+  }
+
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-2px); }
+    75% { transform: translateX(2px); }
   }
 
   .action-btn.ghost.small {
