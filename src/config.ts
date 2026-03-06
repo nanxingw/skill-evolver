@@ -10,6 +10,10 @@ export interface Config {
   port: number;
   maxReports: number;
   reportsToFeed: number;
+  taskAutoApprove: boolean;
+  taskMaxConcurrent: number;
+  taskMaxRunsPerTask: number;
+  postTaskDebounce: number;
 }
 
 const CONFIG_DIR = join(homedir(), ".skill-evolver");
@@ -23,6 +27,10 @@ export function getDefaultConfig(): Config {
     port: 3271,
     maxReports: 50,
     reportsToFeed: 5,
+    taskAutoApprove: true,
+    taskMaxConcurrent: 3,
+    taskMaxRunsPerTask: 20,
+    postTaskDebounce: 300,
   };
 }
 
