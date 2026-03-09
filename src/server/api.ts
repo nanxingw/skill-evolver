@@ -160,19 +160,51 @@ apiRoutes.get("/api/skills", async (c) => {
       skillNames.map(async (name) => {
         const skillMdPath = join(skillsBase, name, "SKILL.md");
         let exists = false;
+        let description = "";
+        let summary = "";
         try {
-          await readFile(skillMdPath, "utf-8");
+          const content = await readFile(skillMdPath, "utf-8");
           exists = true;
+          // Extract description from YAML frontmatter
+          const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+          if (fmMatch) {
+            const descMatch = fmMatch[1].match(/description:\s*(.+)/);
+            if (descMatch) description = descMatch[1].trim().replace(/^["']|["']$/g, "");
+          }
+          // Extract first meaningful paragraph as summary (skip frontmatter and headings)
+          const body = fmMatch ? content.slice(fmMatch[0].length).trim() : content.trim();
+          const lines = body.split("\n");
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed && !trimmed.startsWith("#") && !trimmed.startsWith("---") && !trimmed.startsWith("```")) {
+              summary = trimmed.length > 150 ? trimmed.slice(0, 150) + "..." : trimmed;
+              break;
+            }
+          }
         } catch {
           exists = false;
         }
-        return { name, exists };
+        const path = join(skillsBase, name);
+        return { name, exists, description, summary, path };
       }),
     );
 
     return c.json({ skills });
   } catch {
     return c.json({ skills: [] });
+  }
+});
+
+// POST /api/skills/:name/open — open skill directory in Finder
+apiRoutes.post("/api/skills/:name/open", async (c) => {
+  const name = c.req.param("name");
+  const dir = join(homedir(), ".claude", "skills", name);
+  try {
+    const { spawn } = await import("node:child_process");
+    spawn("open", [dir], { detached: true, stdio: "ignore" }).unref();
+    return c.json({ opened: true });
+  } catch {
+    return c.json({ error: "Failed to open directory" }, 500);
   }
 });
 

@@ -37,9 +37,21 @@ export async function fetchContext(pillar: string) {
   }>(`/api/context/${encodeURIComponent(pillar)}`);
 }
 
+export interface Skill {
+  name: string;
+  exists: boolean;
+  description: string;
+  summary: string;
+  path: string;
+}
+
 export async function fetchSkills() {
-  const data = await request<{ skills: { name: string; exists: boolean }[] }>("/api/skills");
+  const data = await request<{ skills: Skill[] }>("/api/skills");
   return data.skills;
+}
+
+export async function openSkillDir(name: string): Promise<void> {
+  await request<{ opened: boolean }>(`/api/skills/${encodeURIComponent(name)}/open`, { method: "POST" });
 }
 
 export async function fetchConfig() {
