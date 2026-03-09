@@ -33,19 +33,19 @@ export function runCLI(): void {
   const program = new Command();
 
   program
-    .name("skill-evolver")
-    .description("Create and evolve Claude Code skills automatically")
+    .name("autocode")
+    .description("AutoCode — Self-evolving intelligence for Claude Code")
     .version("0.1.0");
 
   program
     .command("start")
-    .description("Start the skill-evolver daemon")
+    .description("Start the AutoCode daemon")
     .option("--foreground", "Run in foreground (don't daemonize)")
     .action(async (opts: { foreground?: boolean }) => {
       const existingPid = await readPid();
       if (existingPid && isProcessRunning(existingPid)) {
         console.log(`Daemon already running (PID ${existingPid})`);
-        console.log(`Run 'skill-evolver stop' first, then start again.`);
+        console.log(`Run 'autocode stop' first, then start again.`);
         return;
       }
 
@@ -66,7 +66,7 @@ export function runCLI(): void {
         await new Promise(r => setTimeout(r, 1500));
         const pid = await readPid();
         const config = await loadConfig();
-        console.log(`skill-evolver daemon started (PID ${pid ?? child.pid})`);
+        console.log(`AutoCode daemon started (PID ${pid ?? child.pid})`);
         console.log(`Dashboard: http://localhost:${config.port}`);
         console.log(`Logs: ${LOG_FILE}`);
         return;
@@ -75,7 +75,7 @@ export function runCLI(): void {
       const config = await loadConfig();
       await writeFile(PID_FILE, String(process.pid), "utf-8");
 
-      console.log(`Starting skill-evolver daemon (PID ${process.pid})`);
+      console.log(`Starting AutoCode daemon (PID ${process.pid})`);
       console.log(`Interval: ${config.interval}, Model: ${config.model}`);
 
       if (config.autoRun) {
@@ -135,7 +135,7 @@ export function runCLI(): void {
 
   program
     .command("stop")
-    .description("Stop the skill-evolver daemon")
+    .description("Stop the AutoCode daemon")
     .action(async () => {
       const pid = await readPid();
       if (!pid) {

@@ -64,11 +64,11 @@ async function installSkillCreator(): Promise<void> {
   const targetDir = join(TARGET_SKILLS, "skill-creator");
 
   if (await exists(join(targetDir, "SKILL.md"))) {
-    console.log("skill-evolver: skill-creator already installed, skipping");
+    console.log("autocode: skill-creator already installed, skipping");
     return;
   }
 
-  console.log("skill-evolver: installing skill-creator from official Anthropic repo...");
+  console.log("autocode: installing skill-creator from official Anthropic repo...");
 
   const tmpDir = join(tmpdir(), `skill-creator-${Date.now()}`);
   try {
@@ -86,13 +86,13 @@ async function installSkillCreator(): Promise<void> {
     const srcDir = join(tmpDir, SKILL_CREATOR_PATH);
     if (await exists(srcDir)) {
       await copyDir(srcDir, targetDir);
-      console.log("skill-evolver: skill-creator installed successfully");
+      console.log("autocode: skill-creator installed successfully");
     } else {
-      console.warn("skill-evolver: skill-creator not found in official repo");
+      console.warn("autocode: skill-creator not found in official repo");
     }
   } catch (err) {
     console.warn(
-      "skill-evolver: could not install skill-creator (git may not be available):",
+      "autocode: could not install skill-creator (git may not be available):",
       err instanceof Error ? err.message : err
     );
   } finally {
@@ -104,18 +104,18 @@ async function installSkillCreator(): Promise<void> {
 async function main(): Promise<void> {
   try {
     if (!await exists(SOURCE_SKILLS)) {
-      console.log("skill-evolver: skills/ directory not found, skipping postinstall");
+      console.log("autocode: skills/ directory not found, skipping postinstall");
       return;
     }
 
-    console.log("skill-evolver: installing skills to ~/.claude/skills/");
+    console.log("autocode: installing skills to ~/.claude/skills/");
     await copyDir(SOURCE_SKILLS, TARGET_SKILLS);
-    console.log("skill-evolver: skills installed successfully");
+    console.log("autocode: skills installed successfully");
 
     // Install skill-creator from official repo if not present
     await installSkillCreator();
   } catch (err) {
-    console.warn("skill-evolver: postinstall warning:", err instanceof Error ? err.message : err);
+    console.warn("autocode: postinstall warning:", err instanceof Error ? err.message : err);
     // Don't crash the install
   }
 }

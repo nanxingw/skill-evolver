@@ -5,16 +5,16 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/skill-evolver"><img src="https://img.shields.io/npm/v/skill-evolver.svg" alt="npm version"></a>
-  <a href="https://nodejs.org"><img src="https://img.shields.io/node/v/skill-evolver.svg" alt="Node.js"></a>
+  <a href="https://www.npmjs.com/package/autocode-cli"><img src="https://img.shields.io/npm/v/autocode-cli.svg" alt="npm version"></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/node/v/autocode-cli.svg" alt="Node.js"></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
 </p>
 
 **Two commands. Your Claude Code starts evolving.**
 
 ```bash
-npm install -g skill-evolver
-skill-evolver start
+npm install -g autocode-cli
+autocode start
 ```
 
 AutoCode runs in the background — reviewing your past sessions, building long-term memory, creating reusable skills, and scheduling autonomous tasks — all without manual intervention.
@@ -103,7 +103,7 @@ User Objectives → Task Agent creates tasks → Tasks execute
 ### Install
 
 ```bash
-npm install -g skill-evolver
+npm install -g autocode-cli
 ```
 
 This automatically:
@@ -120,19 +120,19 @@ This automatically:
 
 ```bash
 # Start the daemon (background + web dashboard)
-skill-evolver start
+autocode start
 
 # Run a single evolution cycle
-skill-evolver evolve
+autocode evolve
 
 # Open the dashboard
-skill-evolver dashboard
+autocode dashboard
 
 # Check status
-skill-evolver status
+autocode status
 
 # Stop the daemon
-skill-evolver stop
+autocode stop
 ```
 
 ### Web Dashboard
@@ -166,10 +166,10 @@ Stored in `~/.skill-evolver/config.yaml`.
 CLI configuration:
 
 ```bash
-skill-evolver config set interval 30m
-skill-evolver config set model sonnet
-skill-evolver config set evolutionMode single
-skill-evolver config get
+autocode config set interval 30m
+autocode config set model sonnet
+autocode config set evolutionMode single
+autocode config get
 ```
 
 ## Architecture
@@ -235,7 +235,7 @@ Detailed Chinese documentation available in `docs/`:
 
 ## Roadmap
 
-- [ ] **Rename CLI** — migrate `skill-evolver` CLI command to `autocode`
+- [ ] **Config migration** — migrate `~/.skill-evolver/` to `~/.autocode/`
 - [ ] **Multi-CLI support** — extend beyond Claude Code to support Codex, Gemini CLI, and other AI coding agents
 - [ ] **Richer information sources** — ingest browser history, Git commit logs, and IDE activity
 - [ ] **Cross-machine sync** — optional cloud sync for user context and evolved skills
