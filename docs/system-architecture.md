@@ -1,6 +1,6 @@
-# skill-evolver 系统架构文档
+# AutoCode 系统架构文档
 
-> 本文档是 skill-evolver 项目的权威技术参考，涵盖系统设计哲学、组件架构、数据流、调度机制和安全边界。
+> 本文档是 AutoCode（npm 包名: skill-evolver）项目的权威技术参考，涵盖系统设计哲学、组件架构、数据流、调度机制和安全边界。
 
 ---
 

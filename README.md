@@ -1,7 +1,7 @@
-<h1 align="center">skill-evolver</h1>
+<h1 align="center">AutoCode</h1>
 
 <p align="center">
-  <strong>Self-evolution & long-term memory for Claude Code.</strong>
+  <strong>Self-evolving intelligence for Claude Code — skills, memory, and autonomous tasks.</strong>
 </p>
 
 <p align="center">
@@ -17,84 +17,86 @@ npm install -g skill-evolver
 skill-evolver start
 ```
 
-That's it. skill-evolver runs in the background, reviewing your past sessions, extracting what worked and what didn't, and turning insights into reusable skills and persistent memory — automatically.
+AutoCode runs in the background — reviewing your past sessions, building long-term memory, creating reusable skills, and scheduling autonomous tasks — all without manual intervention.
 
 ## The Problem
 
-Claude Code is a powerful agent — but it doesn't learn. Every session starts from zero. Failed approaches are repeated, successful patterns are forgotten, and user preferences must be re-explained. The built-in skill system exists, but no one writes skills proactively. They rot or never get created at all.
+Claude Code is powerful, but it doesn't learn. Every session starts from zero. Failed approaches repeat, successful patterns are forgotten, user preferences must be re-explained. The built-in skill system exists, but skills don't write themselves.
 
-## The Philosophy
+## What AutoCode Does
 
-**Skills should write themselves.**
-
-The best workflow isn't one where you manually distill every lesson into a skill file. It's one where your agent reflects on its own history — what worked, what failed, what the user actually wanted — and turns those insights into reusable skills, automatically.
-
-skill-evolver is a background process that periodically launches a Claude Code instance to review past conversation logs. It extracts:
-
-- **Failure patterns** — tasks that went wrong and why
-- **Success patterns** — approaches that worked well and should be codified
-- **User preferences** — recurring requests, style choices, tool preferences
-- **Skill candidates** — new skills to create, or existing skills to sharpen
-
-Then it acts: creating new skills, updating existing ones, pruning outdated ones. Over time, your Claude Code gets *better at being your Claude Code*.
-
-## Core Principles
-
-1. **Zero friction** — runs in the background, no manual intervention required
-2. **Conservative by default** — evidence-based evolution, not impulsive changes
-3. **Evidence-based** — every skill mutation is grounded in actual conversation history
-4. **Incremental** — small, frequent improvements over big rewrites
-
-## How It Works
+AutoCode is a background daemon that periodically spawns Claude Code instances to reflect on your conversation history. Three specialized agents run in parallel:
 
 ```
-┌──────────────────────────────────────────────────┐
-│                 skill-evolver                     │
-│                                                  │
-│  ┌──────────┐    ┌──────────┐    ┌────────────┐ │
-│  │  Timer /  │───▶│ Analyzer │───▶│   Writer   │ │
-│  │  Manual   │    │ (Claude) │    │  (Skills)  │ │
-│  └──────────┘    └──────────┘    └────────────┘ │
-│       │               │               │         │
-│       │          reads from       writes to      │
-│       │               │               │         │
-│       ▼               ▼               ▼         │
-│  ┌──────────────────────────────────────────┐   │
-│  │  ~/.claude/projects/   (session logs)    │   │
-│  │  ~/.claude/skills/     (evolved skills)  │   │
-│  └──────────────────────────────────────────┘   │
-└──────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                        AutoCode                              │
+│                                                              │
+│   ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
+│   │   Context    │  │    Skill    │  │    Task     │        │
+│   │   Agent      │  │    Agent    │  │    Agent    │        │
+│   │             │  │             │  │             │        │
+│   │ Who is the  │  │ What skills │  │ What tasks  │        │
+│   │ user?       │  │ are needed? │  │ should run? │        │
+│   └──────┬──────┘  └──────┬──────┘  └──────┬──────┘        │
+│          │                │                │                │
+│          ▼                ▼                ▼                │
+│   ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
+│   │ Preferences │  │  New Skills │  │ Scheduled   │        │
+│   │ Objectives  │  │  Experience │  │ Tasks       │        │
+│   │ Cognition   │  │  Evolution  │  │ Automation  │        │
+│   └─────────────┘  └─────────────┘  └─────────────┘        │
+│                                                              │
+│   ◄──────── Task-Skill Co-Evolution Loop ────────►          │
+│   Tasks fail → skill-need signal → Skill Agent creates      │
+│   skill → Tasks leverage skill → better execution           │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-1. **Trigger** — on a configurable interval (default: 1 hour after last cycle) or manually from the web dashboard
-2. **Collect** — gather recent Claude Code conversation logs from `~/.claude/projects/`
-3. **Analyze** — a background Claude Code instance reviews the logs, extracts signals about user preferences, successes, failures, and tips
-4. **Accumulate** — signals are stored in `tmp/` YAML files; only when evidence is strong enough (3+ sessions, 2+ days) do they graduate to confirmed knowledge
-5. **Evolve** — create new skills, update existing ones, or refine user context based on accumulated evidence
+### Context Agent — Long-term Memory
 
-## Two Meta-Skills
-
-skill-evolver installs two core skills into `~/.claude/skills/` that power the system. Each skill serves a **dual purpose**: providing context during normal Claude Code sessions (runtime) and guiding the background evolution process.
-
-### user-context
-
-Tracks **who the user is** across three pillars:
+Maintains a persistent user profile across three pillars:
 
 - **Preference** — tool choices, code style, communication preferences
-- **Objective** — current tasks, project goals, career direction
-- **Cognition** — personality traits, decision-making patterns, communication style
+- **Objective** — current projects, goals, career direction
+- **Cognition** — personality traits, decision patterns, communication style
 
-**At runtime**, Claude reads confirmed context to personalize responses. **During evolution**, the background agent reviews session logs, accumulates observations in `tmp/`, and graduates strong signals to confirmed context.
+Signals accumulate in `tmp/` and graduate to confirmed knowledge only with strong evidence (3+ sessions, 2+ days).
 
-### skill-evolver
+### Skill Agent — Need-driven Skill Creation
 
-Tracks **what works technically** across three categories:
+Actively discovers unmet needs and creates skills to address them:
 
-- **Success experience** — patterns and approaches that worked well
-- **Failure experience** — approaches that failed or caused problems
-- **Useful tips** — non-obvious shortcuts and workarounds
+1. Analyzes user objectives, preferences, experience, session logs, and **task execution patterns**
+2. Searches external sources (SkillHub, GitHub, Anthropic official)
+3. Creates or evolves skills using [skill-creator](https://github.com/anthropics/claude-code/tree/main/plugins/skill-creator) methodology
+4. Responds to **skill-need signals** from failed tasks as priority needs
 
-**At runtime**, Claude reads accumulated experience to avoid known pitfalls and apply proven approaches. **During evolution**, the background agent extracts new signals from logs and, when experience is strong enough, creates standalone Claude Code skills.
+### Task Agent — Autonomous Task Scheduling
+
+Decomposes user objectives into actionable automated tasks:
+
+- **Information gathering** — news, trends, research summaries
+- **Quality checks** — linting, type-checking, dependency audits
+- **Monitoring** — progress tracking, status reports
+- **Skill-building** — tasks that create or improve skills, closing the co-evolution loop
+
+## Co-Evolution: Tasks and Skills Reinforce Each Other
+
+AutoCode's unique feature is the **task-skill co-evolution loop**:
+
+```
+User Objectives → Task Agent creates tasks → Tasks execute
+       ↑                                          ↓
+  Skills enhance                           Results & failures
+  task execution                                  ↓
+       ↑                                  Post-task review
+  Skill Agent ◄──── skill-need signals ◄── emits signals
+```
+
+- When a task struggles or fails, the post-task review emits a **skill-need signal**
+- The Skill Agent picks up these signals and creates skills to prevent future failures
+- Tasks declare **related skills** (`relatedSkills` field) so executors leverage existing knowledge
+- The Task Agent can create **skill-building tasks** — tasks whose purpose is to create new skills
 
 ## Getting Started
 
@@ -104,10 +106,10 @@ Tracks **what works technically** across three categories:
 npm install -g skill-evolver
 ```
 
-This will:
-- Install the `skill-evolver` CLI
-- Automatically copy the two meta-skills (user-context, skill-evolver) to `~/.claude/skills/`
-- Install [skill-creator](https://github.com/anthropics/claude-plugins-official) from the official Anthropic plugin repository (requires git)
+This automatically:
+- Installs the AutoCode CLI
+- Copies three meta-skills (user-context, skill-evolver, task-planner) to `~/.claude/skills/`
+- Installs [skill-creator](https://github.com/anthropics/claude-code/tree/main/plugins/skill-creator) from the official Anthropic repo
 
 ### Prerequisites
 
@@ -116,48 +118,35 @@ This will:
 
 ### Usage
 
-**Start the daemon** (runs in background with web dashboard):
-
 ```bash
+# Start the daemon (background + web dashboard)
 skill-evolver start
-```
 
-This starts the evolution scheduler and a web dashboard at `http://localhost:3271`.
-
-**Run a single evolution cycle**:
-
-```bash
+# Run a single evolution cycle
 skill-evolver evolve
-```
 
-**Open the dashboard**:
-
-```bash
+# Open the dashboard
 skill-evolver dashboard
-```
 
-**Check status**:
-
-```bash
+# Check status
 skill-evolver status
-```
 
-**Stop the daemon**:
-
-```bash
+# Stop the daemon
 skill-evolver stop
 ```
 
 ### Web Dashboard
 
-The dashboard at `http://localhost:3271` provides:
+Available at `http://localhost:3271`:
 
-- **Dashboard** — current status, live evolution output, manual trigger button
-- **Reports** — history of all evolution cycle reports
-- **Data Browser** — browse accumulated signals and confirmed knowledge across all 6 pillars (grouped into User Context and Skill Evolver)
-- **Settings** — configure interval, model, auto-run toggle
+- **Dashboard** — live status, real-time evolution output, manual trigger
+- **Tasks** — create, manage, and monitor autonomous tasks
+- **Reports** — complete history of evolution cycle reports
+- **Data Browser** — browse all 6 data pillars (user context + technical experience)
+- **Skills** — view evolved skills inventory
+- **Settings** — configure interval, model, evolution mode, auto-run
 
-Real-time updates via WebSocket — no need to refresh the page.
+Real-time updates via WebSocket.
 
 ## Configuration
 
@@ -165,86 +154,92 @@ Stored in `~/.skill-evolver/config.yaml`.
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `interval` | `1h` | Time between evolution cycles (e.g., `30m`, `2h`). Timer starts after the previous cycle completes. |
-| `model` | `opus` | Claude model to use for the evolution agent |
-| `autoRun` | `true` | Automatically run cycles on the configured interval |
+| `interval` | `1h` | Time between evolution cycles |
+| `model` | `opus` | Claude model for evolution agents |
+| `evolutionMode` | `multi` | `"multi"` (3 parallel agents) or `"single"` (backward compat) |
+| `autoRun` | `true` | Auto-run cycles on interval |
+| `taskAutoApprove` | `true` | Agent-created tasks auto-approved or need user approval |
 | `port` | `3271` | Web dashboard port |
-| `maxReports` | `50` | Maximum number of evolution reports to keep |
-| `reportsToFeed` | `5` | Number of recent reports to provide as context to the evolution agent |
+| `maxReports` | `50` | Max evolution reports to keep |
+| `reportsToFeed` | `5` | Recent reports fed as context to agents |
 
-You can also update configuration via the CLI:
+CLI configuration:
 
 ```bash
 skill-evolver config set interval 30m
 skill-evolver config set model sonnet
+skill-evolver config set evolutionMode single
 skill-evolver config get
 ```
 
-## Evolution Philosophy
+## Architecture
 
-skill-evolver uses an **accumulate-then-graduate** approach:
+### Three Meta-Skills
 
-1. **Signals** are extracted from session logs — each observation is tagged with session ID, date, and detail
-2. **Accumulation** happens in `tmp/` YAML files — signals are deduplicated and merged with existing observations
-3. **Graduation** occurs only when evidence is strong: 3+ distinct sessions, spanning 2+ days, with no contradictions
-4. **Staleness** is cleaned automatically — observations older than 60 days with few signals are removed
+AutoCode installs three skills into `~/.claude/skills/` that serve dual purposes — providing context during normal Claude Code sessions and guiding background evolution:
 
-This prevents premature conclusions. A single session preference won't become a permanent rule — but a pattern that appears consistently across multiple days will.
+| Skill | Runtime Purpose | Evolution Purpose |
+|-------|----------------|-------------------|
+| **user-context** | Personalize responses using confirmed user profile | Context Agent extracts and graduates user signals |
+| **skill-evolver** | Avoid known pitfalls, apply proven approaches | Skill Agent discovers needs, creates/evolves skills |
+| **task-planner** | Help users create and manage tasks | Task Agent decomposes objectives, schedules automation |
 
-## File Structure
+### Evidence-Based Evolution
 
-Each skill uses a **router pattern**: `SKILL.md` provides a rich description and metadata frontmatter, while detailed operation manuals live in `reference/` guides — `runtime_guide.md` for normal session use and `evolution_guide.md` for the background evolution process.
+AutoCode uses an **accumulate-then-graduate** approach to prevent premature conclusions:
+
+1. **Signals** extracted from session logs, tagged with session ID and date
+2. **Accumulation** in `tmp/` YAML files with deduplication
+3. **Graduation** only with 3+ signals spanning 2+ days, no contradictions
+4. **Staleness** auto-cleaned — 60+ day entries with few signals removed
+
+### File Structure
 
 ```
 ~/.claude/skills/
-  user-context/
-    SKILL.md                    # Router: rich description + metadata
-    reference/
-      runtime_guide.md          # How to use context during normal work
-      evolution_guide.md        # Full evolution operation manual
-    context/                    # Graduated knowledge (confirmed)
-      preference.yaml
-      objective.yaml
-      cognition.yaml
-    tmp/                        # Accumulating observations
-      preference_tmp.yaml
-      objective_tmp.yaml
-      cognition_tmp.yaml
-    scripts/                    # Session history search tools
-      list-sessions.mjs         # Find sessions by date/project
-      session-digest.mjs        # Extract conversation text only
-      search-messages.mjs       # Regex keyword search across sessions
-      extract-tool-flow.mjs     # Tool usage sequence with error detection
-      session-stats.mjs         # Quick session statistics
+  user-context/                 # User profile (preference, objective, cognition)
+    SKILL.md
+    context/                    # Graduated knowledge
+    tmp/                        # Accumulating signals
+    scripts/                    # Session search tools (5 scripts)
 
-  skill-evolver/
-    SKILL.md                    # Router: rich description + metadata
-    reference/
-      permitted_skills.md       # Skills this agent can modify
-      runtime_guide.md          # How to use experience during normal work
-      evolution_guide.md        # Full evolution operation manual
-    tmp/                        # Accumulating experience
-      success_experience.yaml
-      failure_experience.yaml
-      useful_tips.yaml
+  skill-evolver/                # Technical experience + skill creation
+    SKILL.md
+    reference/permitted_skills.md
+    tmp/                        # Experience + skill_needs.yaml
 
-  skill-creator/                # From official Anthropic plugin repo
-    SKILL.md                    # Skill creation & iteration guide
-    references/                 # Schemas and best practices
-    scripts/                    # Eval and benchmarking tools
-    agents/                     # Subagent definitions
+  task-planner/                 # Task scheduling
+    SKILL.md
+    buffer/ideas.yaml
+    reference/                  # Task schema + guides
+
+  skill-creator/                # Official Anthropic skill creation tool
 
 ~/.skill-evolver/
   config.yaml                   # Configuration
   reports/                      # Evolution cycle reports
+  tasks/
+    tasks.yaml                  # Central task store
+    <task-id>/artifacts/        # Persistent task artifacts
+    <task-id>/reports/          # Per-task execution reports
 ```
+
+## Documentation
+
+Detailed Chinese documentation available in `docs/`:
+
+- [System Architecture](docs/system-architecture.md) — complete system design and data flow
+- [user-context Skill](docs/skill-user-context.md) — three pillars, graduation mechanism, session scripts
+- [skill-evolver Skill](docs/skill-skill-evolver.md) — need-driven workflow, skill-creator integration
+- [task-planner Skill](docs/skill-task-planner.md) — task lifecycle, skill-building tasks, safety tiers
 
 ## Roadmap
 
+- [ ] **Rename CLI** — migrate `skill-evolver` CLI command to `autocode`
 - [ ] **Multi-CLI support** — extend beyond Claude Code to support Codex, Gemini CLI, and other AI coding agents
-- [ ] **Richer information sources** — ingest browser history, Git commit logs, and IDE activity as additional evolution signals
-- [ ] **Cross-machine sync** — optional cloud sync for user context and evolved skills across devices
-- [ ] **Skill marketplace** — share and discover community-created skills evolved by other users
+- [ ] **Richer information sources** — ingest browser history, Git commit logs, and IDE activity
+- [ ] **Cross-machine sync** — optional cloud sync for user context and evolved skills
+- [ ] **Skill marketplace** — share and discover community-created evolved skills
 
 ## License
 

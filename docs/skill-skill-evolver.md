@@ -1,6 +1,6 @@
 # Skill-Evolver Skill 工作原理详解
 
-本文档详细阐述 `skill-evolver` 这个 meta-skill 的完整工作原理，包括其双重定位、经验积累机制、需求驱动的 skill 创建流程、以及与 skill-creator 和 task-planner 的协同关系。
+本文档详细阐述 AutoCode 中 `skill-evolver` 这个 meta-skill 的完整工作原理，包括其双重定位、经验积累机制、需求驱动的 skill 创建流程、以及与 skill-creator 和 task-planner 的协同关系。
 
 ---
 
