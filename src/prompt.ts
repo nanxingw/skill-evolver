@@ -267,6 +267,7 @@ You MUST use skill-creator methodology when creating or evolving skills. Read \`
 3. Use Edit for targeted changes — don't rewrite entire files unless necessary
 4. Base changes on accumulated experience evidence
 5. If the skill has \`evals/evals.json\`, consider updating the evals to cover new scenarios
+6. **Update the existing entry in-place** in \`permitted_skills.md\` — do NOT append a duplicate entry. Use the Edit tool to replace the old line with updated info.
 
 **Skill quality checklist** (from skill-creator):
 - [ ] Clear, actionable instructions using imperative form

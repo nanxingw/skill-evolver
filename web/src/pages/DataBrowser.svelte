@@ -11,7 +11,7 @@
       ],
     },
     {
-      label: "Skill Evolver",
+      label: "AutoCode",
       pillars: [
         { key: "success_experience", label: "Success" },
         { key: "failure_experience", label: "Failure" },

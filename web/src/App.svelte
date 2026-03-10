@@ -39,7 +39,7 @@
 
 <div class="shell">
   <header>
-    <h1>Skill Evolver</h1>
+    <h1>AutoCode</h1>
     <nav>
       {#each tabs as tab}
         <button

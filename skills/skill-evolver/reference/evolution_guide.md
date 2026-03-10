@@ -187,6 +187,7 @@ Continue maintaining tmp files — they inform your decisions:
   - `~/.claude/skills/skill-evolver/SKILL.md`
   - Any skill not in your permitted list
 - When creating a new skill, add its name to `permitted_skills.md`.
+- When updating an existing skill, **update its existing entry in-place** in `permitted_skills.md` — do NOT append a duplicate entry. Use the Edit tool to replace the old line.
 
 ---
 
