@@ -1,4 +1,4 @@
-本项目为 **AutoCode** (npm 包名: skill-evolver)，一个为 Claude Code 提供自进化智能的后台系统。
+本项目为 **AutoCode** (npm 包名: @nanxingw/autocode-cli)，一个为 Claude Code 提供自进化智能的后台系统。
 
 ## 项目概览
 
