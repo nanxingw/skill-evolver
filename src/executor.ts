@@ -10,11 +10,12 @@ import {
   buildContextAgentPrompt,
   buildSkillAgentPrompt,
   buildTaskAgentPrompt,
+  buildMemoryAgentPrompt,
 } from "./prompt.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type JobType = "evolution" | "post-task" | "task" | "evo-context" | "evo-skill" | "evo-task";
+export type JobType = "evolution" | "post-task" | "task" | "evo-context" | "evo-skill" | "evo-task" | "evo-memory";
 
 export interface ExecutionJob {
   id: string;
@@ -38,6 +39,7 @@ export interface MultiAgentResult {
   context: ExecutionResult | null;
   skill: ExecutionResult | null;
   task: ExecutionResult | null;
+  memory: ExecutionResult | null;
   totalDuration: number;
 }
 
@@ -70,7 +72,7 @@ class Executor extends EventEmitter {
   /** Check if any evolution-related job is running */
   get hasEvolutionRunning(): boolean {
     return Array.from(this.running.values()).some(
-      j => j.type === "evolution" || j.type === "evo-context" || j.type === "evo-skill" || j.type === "evo-task",
+      j => j.type === "evolution" || j.type === "evo-context" || j.type === "evo-skill" || j.type === "evo-task" || j.type === "evo-memory",
     );
   }
 
@@ -102,9 +104,9 @@ class Executor extends EventEmitter {
       this.emit("cycle_start");
     }
     // Multi-agent: emit cycle_start on first evo-* job
-    if (job.type === "evo-context" || job.type === "evo-skill" || job.type === "evo-task") {
+    if (job.type === "evo-context" || job.type === "evo-skill" || job.type === "evo-task" || job.type === "evo-memory") {
       const evoJobs = Array.from(this.running.values()).filter(
-        j => j.type === "evo-context" || j.type === "evo-skill" || j.type === "evo-task",
+        j => j.type === "evo-context" || j.type === "evo-skill" || j.type === "evo-task" || j.type === "evo-memory",
       );
       if (evoJobs.length === 1) {
         this.emit("cycle_start");
@@ -264,9 +266,9 @@ export async function runEvolutionCycle(): Promise<ExecutionResult> {
     const multiResult = await runMultiAgentEvolution();
     // Return a synthetic ExecutionResult for backward compat
     return {
-      success: (multiResult.context?.success ?? true) && (multiResult.skill?.success ?? true) && (multiResult.task?.success ?? true),
+      success: (multiResult.context?.success ?? true) && (multiResult.skill?.success ?? true) && (multiResult.task?.success ?? true) && (multiResult.memory?.success ?? true),
       duration: multiResult.totalDuration,
-      output: `Multi-agent cycle completed. Context: ${multiResult.context?.success ?? "skipped"}, Skill: ${multiResult.skill?.success ?? "skipped"}, Task: ${multiResult.task?.success ?? "skipped"}`,
+      output: `Multi-agent cycle completed. Context: ${multiResult.context?.success ?? "skipped"}, Skill: ${multiResult.skill?.success ?? "skipped"}, Task: ${multiResult.task?.success ?? "skipped"}, Memory: ${multiResult.memory?.success ?? "skipped"}`,
       jobId: `evolution-multi-${++evolutionCounter}-${Date.now()}`,
       jobType: "evolution",
     };
@@ -309,6 +311,7 @@ export async function runMultiAgentEvolution(): Promise<MultiAgentResult> {
   const contextReportPath = join(reportsDir, `${ts}_context_report.md`);
   const skillReportPath = join(reportsDir, `${ts}_skill_report.md`);
   const taskReportPath = join(reportsDir, `${ts}_task_report.md`);
+  const memoryReportPath = join(reportsDir, `${ts}_memory_report.md`);
   const mergedReportPath = join(reportsDir, `${ts}_report.md`);
 
   const contextPrompt = buildContextAgentPrompt(recentReports, contextReportPath);
@@ -316,12 +319,13 @@ export async function runMultiAgentEvolution(): Promise<MultiAgentResult> {
   const taskPrompt = buildTaskAgentPrompt(recentReports, taskReportPath, {
     taskAutoApprove: config.taskAutoApprove,
   });
+  const memoryPrompt = buildMemoryAgentPrompt(recentReports, memoryReportPath);
 
   const startTime = Date.now();
   const counter = ++evolutionCounter;
 
-  // Run three agents in parallel
-  const [contextSettled, skillSettled, taskSettled] = await Promise.allSettled([
+  // Run four agents in parallel
+  const [contextSettled, skillSettled, taskSettled, memorySettled] = await Promise.allSettled([
     executor.run({
       id: `evo-context-${counter}-${Date.now()}`,
       type: "evo-context",
@@ -340,11 +344,18 @@ export async function runMultiAgentEvolution(): Promise<MultiAgentResult> {
       prompt: taskPrompt,
       model: config.model,
     }),
+    executor.run({
+      id: `evo-memory-${counter}-${Date.now()}`,
+      type: "evo-memory",
+      prompt: memoryPrompt,
+      model: config.model,
+    }),
   ]);
 
   const contextResult = contextSettled.status === "fulfilled" ? contextSettled.value : null;
   const skillResult = skillSettled.status === "fulfilled" ? skillSettled.value : null;
   const taskResult = taskSettled.status === "fulfilled" ? taskSettled.value : null;
+  const memoryResult = memorySettled.status === "fulfilled" ? memorySettled.value : null;
 
   const totalDuration = Date.now() - startTime;
 
@@ -353,15 +364,17 @@ export async function runMultiAgentEvolution(): Promise<MultiAgentResult> {
     contextPath: contextReportPath,
     skillPath: skillReportPath,
     taskPath: taskReportPath,
+    memoryPath: memoryReportPath,
     contextResult,
     skillResult,
     taskResult,
+    memoryResult,
     totalDuration,
   });
 
   // Emit cycle_end with synthetic result
   const syntheticResult: ExecutionResult = {
-    success: (contextResult?.success ?? false) || (skillResult?.success ?? false) || (taskResult?.success ?? false),
+    success: (contextResult?.success ?? false) || (skillResult?.success ?? false) || (taskResult?.success ?? false) || (memoryResult?.success ?? false),
     duration: totalDuration,
     output: "Multi-agent evolution cycle completed",
     jobId: `evolution-multi-${counter}`,
@@ -373,7 +386,7 @@ export async function runMultiAgentEvolution(): Promise<MultiAgentResult> {
 
   await cleanupReports(config.maxReports);
 
-  return { context: contextResult, skill: skillResult, task: taskResult, totalDuration };
+  return { context: contextResult, skill: skillResult, task: taskResult, memory: memoryResult, totalDuration };
 }
 
 async function mergeReports(
@@ -382,9 +395,11 @@ async function mergeReports(
     contextPath: string;
     skillPath: string;
     taskPath: string;
+    memoryPath: string;
     contextResult: ExecutionResult | null;
     skillResult: ExecutionResult | null;
     taskResult: ExecutionResult | null;
+    memoryResult: ExecutionResult | null;
     totalDuration: number;
   },
 ): Promise<void> {
@@ -397,10 +412,12 @@ async function mergeReports(
   let contextReport = "";
   let skillReport = "";
   let taskReport = "";
+  let memoryReport = "";
 
   try { contextReport = await readFile(opts.contextPath, "utf-8"); } catch { /* agent may not have written it */ }
   try { skillReport = await readFile(opts.skillPath, "utf-8"); } catch { /* agent may not have written it */ }
   try { taskReport = await readFile(opts.taskPath, "utf-8"); } catch { /* agent may not have written it */ }
+  try { memoryReport = await readFile(opts.memoryPath, "utf-8"); } catch { /* agent may not have written it */ }
 
   const statusLine = (result: ExecutionResult | null, name: string): string => {
     if (!result) return `${name}: FAILED`;
@@ -414,6 +431,7 @@ async function mergeReports(
 - ${statusLine(opts.contextResult, "Context Agent")}
 - ${statusLine(opts.skillResult, "Skill Agent")}
 - ${statusLine(opts.taskResult, "Task Agent")}
+- ${statusLine(opts.memoryResult, "Memory Agent")}
 - Total duration: ${Math.round(opts.totalDuration / 1000)}s
 
 ---
@@ -433,6 +451,12 @@ ${skillReport || "_Agent did not produce a report._"}
 ## Task Agent
 
 ${taskReport || "_Agent did not produce a report._"}
+
+---
+
+## Memory Agent
+
+${memoryReport || "_Agent did not produce a report._"}
 `;
 
   await writeFile(outputPath, merged, "utf-8");

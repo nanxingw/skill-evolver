@@ -3,7 +3,7 @@
   import { fetchReports, fetchReport } from "../lib/api";
   import { marked } from "marked";
 
-  type AgentType = "context" | "skill" | "task" | "evolution";
+  type AgentType = "context" | "skill" | "task" | "memory" | "evolution";
 
   interface ReportEntry {
     filename: string;
@@ -27,6 +27,7 @@
     if (filename.includes("_context_")) return "context";
     if (filename.includes("_skill_")) return "skill";
     if (filename.includes("_task_")) return "task";
+    if (filename.includes("_memory_")) return "memory";
     return "evolution";
   }
 
@@ -34,6 +35,7 @@
     context: "Context",
     skill: "Skill",
     task: "Task",
+    memory: "Memory",
     evolution: "Evolution",
   };
 
@@ -399,6 +401,11 @@
   .agent-task {
     background: var(--agent-task-soft);
     color: var(--agent-task);
+  }
+
+  .agent-memory {
+    background: var(--agent-memory-soft);
+    color: var(--agent-memory);
   }
 
   .agent-evolution {

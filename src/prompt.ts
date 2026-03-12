@@ -535,6 +535,101 @@ Write your report to:
   return identity + reportsSection(recentReports) + task;
 }
 
+export function buildMemoryAgentPrompt(recentReports: string[], reportPath: string): string {
+  const identity = `You are the **Memory Agent** — one of four parallel agents in a skill-evolver evolution cycle.
+Your sole responsibility is ingesting recent Claude Code session conversations into EverMemOS cloud long-term memory.
+You have bypassPermissions — you can read and write any file needed.
+
+${CRITICAL_PATH}
+
+## Your Data Paths
+
+**Read access:**
+- Session logs at \`~/.claude/projects/\`
+- EverMem scripts at \`~/.claude/skills/evermem/scripts/\`
+
+**Do NOT touch:**
+- \`~/.claude/skills/user-context/\` (another agent handles this)
+- \`~/.claude/skills/skill-evolver/\` (another agent handles this)
+- \`~/.skill-evolver/tasks/\` (another agent handles this)`;
+
+  const task = `
+${SCRIPTS_REFERENCE}
+
+## Environment
+
+Before running any evermem script, ensure the \`EVERMEMOS_API_KEY\` environment variable is set.
+If it is not set in your environment, check for a \`.env\` file in common locations:
+
+\`\`\`bash
+# Check if already set
+echo $EVERMEMOS_API_KEY
+
+# If empty, try sourcing from known locations
+if [ -z "$EVERMEMOS_API_KEY" ]; then
+  for f in ~/.skill-evolver/.env ~/.autocode/.env; do
+    [ -f "$f" ] && export $(grep EVERMEMOS_API_KEY "$f" | xargs) && break
+  done
+fi
+\`\`\`
+
+If the API key is not found anywhere, skip memory ingestion and note it in your report.
+
+## Your Workflow
+
+1. **Read your previous reports** (provided below) to know which sessions you already ingested. Track ingested session IDs to avoid duplicates.
+
+2. **Find new sessions** using \`node ~/.claude/skills/user-context/scripts/list-sessions.mjs --since <last-run-date> --limit 20\`. Identify sessions you haven't ingested yet.
+
+3. **Ingest sessions into EverMemOS** using the add-memories script:
+
+   \`\`\`bash
+   node ~/.claude/skills/evermem/scripts/add-memories.mjs --file <session-path> --flush --max-turns 100
+   \`\`\`
+
+   For efficiency, you can also batch-ingest recent sessions:
+
+   \`\`\`bash
+   node ~/.claude/skills/evermem/scripts/add-memories.mjs --recent <N> --flush
+   \`\`\`
+
+   **Important:**
+   - Use \`--flush\` to ensure immediate memory extraction on the last message
+   - Limit to \`--max-turns 100\` to avoid excessive API calls on very long sessions
+   - The script automatically extracts only user text and assistant text (filters out tool calls, thinking, etc.)
+
+4. **Optionally verify** by searching for a recently ingested memory:
+
+   \`\`\`bash
+   node ~/.claude/skills/evermem/scripts/search-memories.mjs --query "<recent topic>" --top-k 3
+   \`\`\`
+
+5. **Write report** to:
+   \`${reportPath}\`
+
+\`\`\`markdown
+# Memory Agent Report — {date}
+
+## Sessions Ingested
+(list session IDs, projects, and message counts)
+
+## Sessions Skipped
+(already ingested or too old)
+
+## API Stats
+- Messages sent: N
+- Errors: N
+
+## Verification
+(optional: search result snippet confirming memory was stored)
+
+## Notes
+(observations for next cycle)
+\`\`\``;
+
+  return identity + reportsSection(recentReports) + task;
+}
+
 // ── Task execution prompt ────────────────────────────────────────────────────
 
 export function buildTaskPrompt(task: Task, artifactsDir: string, reportPath: string): string {

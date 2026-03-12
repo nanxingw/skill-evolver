@@ -211,6 +211,25 @@ async function tick(): Promise<void> {
     }
   }
 
+  // ── Step 3b: ENFORCE LIMIT — pause overflow tasks if active > max ──
+  const allTasks = await listTasks().catch(() => [] as Task[]);
+  const activeTasks_ = allTasks.filter(
+    t => t.status === "active" || t.status === "running" || t.status === "pending",
+  );
+  if (activeTasks_.length > config.taskMaxActive) {
+    // Sort: lowest priority + newest first → those get paused
+    const overflow = sortByPriority(activeTasks_).reverse();
+    let toPause = activeTasks_.length - config.taskMaxActive;
+    for (const task of overflow) {
+      if (toPause <= 0) break;
+      // Don't pause running tasks
+      if (task.status === "running") continue;
+      console.log(`[scheduler] Active limit exceeded (${activeTasks_.length}/${config.taskMaxActive}), pausing "${task.name}"`);
+      await updateTask(task.id, { status: "paused" });
+      toPause--;
+    }
+  }
+
   // ── Step 4: Count active execution slots ──
   const runningTaskJobs = Array.from(executor.running.values()).filter(
     j => j.type === "task" || j.type === "post-task",

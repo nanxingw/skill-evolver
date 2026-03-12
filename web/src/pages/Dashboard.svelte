@@ -3,9 +3,12 @@
   import {
     fetchDashboard,
     triggerEvolution,
+    fetchSkills,
+    openSkillDir,
     type DashboardData,
     type DashboardReport,
     type DashboardTask,
+    type Skill,
   } from "../lib/api";
   import { createWsConnection } from "../lib/ws";
 
@@ -13,6 +16,22 @@
   let data: DashboardData | null = $state(null);
   let loading: boolean = $state(true);
   let triggering: boolean = $state(false);
+
+  // Skills
+  let skills: Skill[] = $state([]);
+  let skillsExpanded: Set<string> = $state(new Set());
+  let skillsCollapsed: boolean = $state(true);
+
+  function toggleSkillExpand(name: string) {
+    const next = new Set(skillsExpanded);
+    if (next.has(name)) next.delete(name);
+    else next.add(name);
+    skillsExpanded = next;
+  }
+
+  async function handleOpenSkill(name: string) {
+    try { await openSkillDir(name); } catch { /* ignore */ }
+  }
 
   // Per-agent live output
   let agentOutput: Record<string, string> = $state({});
@@ -55,6 +74,15 @@
       color: "var(--agent-task)",
       colorSoft: "var(--agent-task-soft)",
     },
+    {
+      key: "memory",
+      jobType: "evo-memory",
+      name: "Memory Agent",
+      desc: "Ingesting conversations into EverMemOS cloud long-term memory",
+      icon: "database",
+      color: "var(--agent-memory)",
+      colorSoft: "var(--agent-memory-soft)",
+    },
   ];
 
   function isAgentActive(jobType: string): boolean {
@@ -81,6 +109,7 @@
 
   onMount(() => {
     loadDashboard();
+    fetchSkills().then(s => skills = s.filter(sk => sk.exists)).catch(() => {});
     const ws = createWsConnection((event, payload) => {
       if (event === "cycle_start") {
         agentOutput = {};
@@ -88,20 +117,20 @@
         liveOutput = "";
       } else if (event === "job_start") {
         const jt = payload.jobType as string;
-        if (jt === "evo-context" || jt === "evo-skill" || jt === "evo-task") {
+        if (jt === "evo-context" || jt === "evo-skill" || jt === "evo-task" || jt === "evo-memory") {
           agentActive = { ...agentActive, [jt]: true };
           agentOutput = { ...agentOutput, [jt]: "" };
         }
       } else if (event === "job_progress") {
         const jt = payload.jobType as string;
         const text = payload.text ?? "";
-        if (jt === "evo-context" || jt === "evo-skill" || jt === "evo-task") {
+        if (jt === "evo-context" || jt === "evo-skill" || jt === "evo-task" || jt === "evo-memory") {
           agentOutput = { ...agentOutput, [jt]: (agentOutput[jt] ?? "") + text };
         }
         liveOutput += text;
       } else if (event === "job_end" || event === "job_error") {
         const jt = payload.jobType as string;
-        if (jt === "evo-context" || jt === "evo-skill" || jt === "evo-task") {
+        if (jt === "evo-context" || jt === "evo-skill" || jt === "evo-task" || jt === "evo-memory") {
           agentActive = { ...agentActive, [jt]: false };
         }
       } else if (event === "cycle_end") {
@@ -332,6 +361,61 @@
     </div>
   </div>
 
+  <!-- ══ Evolved Skills ═════════════════════════════════════════════════════ -->
+  {#if skills.length > 0}
+    <div class="skills-section">
+      <button class="skills-header" onclick={() => skillsCollapsed = !skillsCollapsed}>
+        <div class="skills-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          <h3>Evolved Skills</h3>
+          <span class="skills-count">{skills.length}</span>
+        </div>
+        <svg class="chevron" class:collapsed={skillsCollapsed} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+
+      {#if !skillsCollapsed}
+        <div class="skills-grid">
+          {#each skills as skill}
+            {@const expanded = skillsExpanded.has(skill.name)}
+            <div class="skill-card" class:expanded>
+              <button class="skill-card-main" onclick={() => toggleSkillExpand(skill.name)}>
+                <div class="skill-icon-wrap">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                </div>
+                <div class="skill-info">
+                  <span class="skill-name">{skill.name}</span>
+                  <span class="skill-desc-line">{skill.description ? (skill.description.length > 80 ? skill.description.slice(0, 80) + '...' : skill.description) : 'No description'}</span>
+                </div>
+                <svg class="skill-chevron" class:open={expanded} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+
+              {#if expanded}
+                <div class="skill-detail">
+                  {#if skill.description}
+                    <p class="skill-full-desc">{skill.description}</p>
+                  {/if}
+                  {#if skill.summary}
+                    <div class="skill-summary-block">
+                      <span class="skill-summary-label">Summary</span>
+                      <p class="skill-summary-text">{skill.summary}</p>
+                    </div>
+                  {/if}
+                  <div class="skill-actions">
+                    <button class="skill-open-btn" onclick={(e: MouseEvent) => { e.stopPropagation(); handleOpenSkill(skill.name); }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                      Open in Finder
+                    </button>
+                    <span class="skill-path">{skill.path}</span>
+                  </div>
+                </div>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </div>
+  {/if}
+
   <!-- ══ Quick Stats ═════════════════════════════════════════════════════════ -->
   <div class="stats-strip">
     <div class="mini-stat">
@@ -367,6 +451,9 @@
           <button class="live-tab" class:active={activeOutputTab === "evo-task"} onclick={() => activeOutputTab = "evo-task"}>
             <span class="tab-dot" style="background: var(--agent-task)"></span>Task
           </button>
+          <button class="live-tab" class:active={activeOutputTab === "evo-memory"} onclick={() => activeOutputTab = "evo-memory"}>
+            <span class="tab-dot" style="background: var(--agent-memory)"></span>Memory
+          </button>
         </div>
         {#if state === "running"}
           <span class="live-badge">LIVE</span>
@@ -392,6 +479,8 @@
     --agent-skill-soft: rgba(229, 168, 54, 0.12);
     --agent-task: #6ecf97;
     --agent-task-soft: rgba(110, 207, 151, 0.12);
+    --agent-memory: #c084fc;
+    --agent-memory-soft: rgba(192, 132, 252, 0.12);
   }
 
   /* ── Section Title ──────────────────────────────────────────────────────── */
@@ -780,6 +869,11 @@
     color: var(--agent-task);
   }
 
+  .report-badge[data-type="memory"] {
+    background: var(--agent-memory-soft);
+    color: var(--agent-memory);
+  }
+
   .report-badge[data-type="evolution"] {
     background: var(--accent-soft);
     color: var(--accent);
@@ -965,6 +1059,221 @@
   @keyframes shimmer {
     0%, 100% { opacity: 0.3; }
     50% { opacity: 0.6; }
+  }
+
+  /* ── Evolved Skills ────────────────────────────────────────────────────── */
+  .skills-section {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+  }
+
+  .skills-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 0.875rem 1.125rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text);
+    transition: background 0.15s;
+  }
+
+  .skills-header:hover {
+    background: var(--bg-hover);
+  }
+
+  .skills-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .skills-title svg {
+    color: var(--agent-skill);
+  }
+
+  .skills-title h3 {
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .skills-count {
+    font-size: 0.68rem;
+    color: var(--text-dim);
+    background: var(--bg-surface);
+    padding: 0.1rem 0.5rem;
+    border-radius: 9999px;
+    border: 1px solid var(--border-subtle);
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+  }
+
+  .chevron {
+    color: var(--text-dim);
+    transition: transform 0.25s ease;
+    flex-shrink: 0;
+  }
+
+  .chevron.collapsed {
+    transform: rotate(-90deg);
+  }
+
+  .skills-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    background: var(--border-subtle);
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .skill-card {
+    background: var(--bg-elevated);
+    transition: background 0.15s;
+  }
+
+  .skill-card-main {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 0.75rem 1.125rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    color: var(--text);
+    transition: background 0.15s;
+  }
+
+  .skill-card-main:hover {
+    background: var(--bg-hover);
+  }
+
+  .skill-icon-wrap {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: var(--agent-skill-soft);
+    color: var(--agent-skill);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .skill-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  .skill-name {
+    font-size: 0.82rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--text);
+  }
+
+  .skill-desc-line {
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    line-height: 1.4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .skill-chevron {
+    color: var(--text-dim);
+    flex-shrink: 0;
+    transition: transform 0.2s ease;
+  }
+
+  .skill-chevron.open {
+    transform: rotate(180deg);
+  }
+
+  .skill-detail {
+    padding: 0 1.125rem 0.875rem 3.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+    animation: fadeSlideIn 0.2s ease;
+  }
+
+  .skill-full-desc {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    line-height: 1.55;
+  }
+
+  .skill-summary-block {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 0.625rem 0.75rem;
+  }
+
+  .skill-summary-label {
+    display: block;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-dim);
+    margin-bottom: 0.3rem;
+  }
+
+  .skill-summary-text {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    line-height: 1.55;
+  }
+
+  .skill-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .skill-open-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.3rem 0.65rem;
+    font-size: 0.7rem;
+    font-weight: 550;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+
+  .skill-open-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  .skill-path {
+    font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+    font-size: 0.62rem;
+    color: var(--text-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
   }
 
   /* ── Live Panel ─────────────────────────────────────────────────────────── */
