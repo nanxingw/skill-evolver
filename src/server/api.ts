@@ -13,6 +13,11 @@ import {
   getArtifactsDir, addRejected, listIdeas, listSkillNeeds, countActiveTasks,
 } from "../task-store.js";
 import { buildTaskPrompt } from "../prompt.js";
+import {
+  listWorks, getWork, createWork as storeCreateWork,
+  updateWork as storeUpdateWork, deleteWork as storeDeleteWork,
+  listAssets, getAssetPath,
+} from "../work-store.js";
 
 export const apiRoutes = new Hono();
 
@@ -577,5 +582,114 @@ apiRoutes.get("/api/ideas", async (c) => {
     return c.json({ ideas });
   } catch {
     return c.json({ ideas: [] });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Work API
+// ---------------------------------------------------------------------------
+
+// GET /api/works
+apiRoutes.get("/api/works", async (c) => {
+  try {
+    const works = await listWorks();
+    return c.json({ works });
+  } catch {
+    return c.json({ works: [] });
+  }
+});
+
+// POST /api/works
+apiRoutes.post("/api/works", async (c) => {
+  try {
+    const body = await c.req.json<{
+      title: string;
+      type: string;
+      platforms: string[];
+      topicHint?: string;
+    }>();
+    if (!body.title || !body.type || !body.platforms) {
+      return c.json({ error: "title, type, and platforms are required" }, 400);
+    }
+    const work = await storeCreateWork({
+      title: body.title,
+      type: body.type as "short-video" | "image-text" | "long-video" | "livestream",
+      platforms: body.platforms,
+      topicHint: body.topicHint,
+    });
+    return c.json(work, 201);
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : "Failed to create work" }, 400);
+  }
+});
+
+// GET /api/works/:id
+apiRoutes.get("/api/works/:id", async (c) => {
+  const id = c.req.param("id");
+  try {
+    const work = await getWork(id);
+    if (!work) return c.json({ error: "Work not found" }, 404);
+    return c.json(work);
+  } catch {
+    return c.json({ error: "Work not found" }, 404);
+  }
+});
+
+// PUT /api/works/:id
+apiRoutes.put("/api/works/:id", async (c) => {
+  const id = c.req.param("id");
+  try {
+    const body = await c.req.json();
+    const work = await storeUpdateWork(id, body);
+    if (!work) return c.json({ error: "Work not found" }, 404);
+    return c.json(work);
+  } catch {
+    return c.json({ error: "Work not found" }, 404);
+  }
+});
+
+// DELETE /api/works/:id
+apiRoutes.delete("/api/works/:id", async (c) => {
+  const id = c.req.param("id");
+  try {
+    const deleted = await storeDeleteWork(id);
+    if (!deleted) return c.json({ error: "Work not found" }, 404);
+    return c.json({ deleted: true });
+  } catch {
+    return c.json({ error: "Work not found" }, 404);
+  }
+});
+
+// GET /api/works/:id/assets
+apiRoutes.get("/api/works/:id/assets", async (c) => {
+  const id = c.req.param("id");
+  try {
+    const assets = await listAssets(id);
+    return c.json({ assets });
+  } catch {
+    return c.json({ assets: [] });
+  }
+});
+
+// GET /api/works/:id/assets/:filename — serve asset file
+apiRoutes.get("/api/works/:id/assets/:filename", async (c) => {
+  const id = c.req.param("id");
+  const filename = c.req.param("filename");
+  try {
+    const filePath = getAssetPath(id, filename);
+    const content = await readFile(filePath);
+    // Determine content type from extension
+    const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+    const mimeMap: Record<string, string> = {
+      png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
+      webp: "image/webp", svg: "image/svg+xml", mp4: "video/mp4", webm: "video/webm",
+      pdf: "application/pdf", txt: "text/plain", md: "text/markdown",
+    };
+    const contentType = mimeMap[ext] ?? "application/octet-stream";
+    return new Response(content, {
+      headers: { "Content-Type": contentType },
+    });
+  } catch {
+    return c.json({ error: "Asset not found" }, 404);
   }
 });
