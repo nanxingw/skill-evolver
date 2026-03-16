@@ -5,8 +5,9 @@ import { readFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Server } from "node:http";
-import { apiRoutes } from "./api.js";
-import { setupWebSocket, type WsBroadcast } from "./ws.js";
+import { apiRoutes, setWsBridge } from "./api.js";
+import { setupWebSocket, type LegacyWss } from "./ws.js";
+import { WsBridge } from "../ws-bridge.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -14,7 +15,7 @@ const __dirname = dirname(__filename);
 // Resolve web/dist relative to the package root (two levels up from dist/server/)
 const WEB_DIST = join(__dirname, "..", "..", "web", "dist");
 
-export function startServer(port: number): { server: Server; wsBroadcast: WsBroadcast } {
+export function startServer(port: number): { server: Server; wsBroadcast: LegacyWss } {
   const app = new Hono();
 
   // Mount API routes
@@ -40,7 +41,32 @@ export function startServer(port: number): { server: Server; wsBroadcast: WsBroa
   });
 
   const httpServer = nodeServer as unknown as Server;
-  const wsBroadcast = setupWebSocket(httpServer);
 
-  return { server: httpServer, wsBroadcast };
+  // Set up legacy dashboard WebSocket (noServer mode)
+  const legacyWss = setupWebSocket(httpServer);
+
+  // Create WsBridge for CLI ↔ browser sessions
+  const wsBridge = new WsBridge(port);
+  setWsBridge(wsBridge);
+
+  // Route HTTP upgrade events
+  httpServer.on("upgrade", (req, socket, head) => {
+    const url = req.url ?? "";
+
+    // Try WsBridge first (handles /ws/cli/:workId and /ws/browser/:workId)
+    if (wsBridge.handleUpgrade(req, socket, head)) {
+      return;
+    }
+
+    // Legacy dashboard WebSocket at /ws
+    if (url === "/ws" || url.startsWith("/ws?")) {
+      legacyWss.handleUpgrade(req, socket, head);
+      return;
+    }
+
+    // Unknown upgrade — destroy socket
+    socket.destroy();
+  });
+
+  return { server: httpServer, wsBroadcast: legacyWss };
 }

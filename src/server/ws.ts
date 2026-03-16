@@ -1,13 +1,25 @@
-import type { Server } from "node:http";
+import type { Server, IncomingMessage } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
+import type { Duplex } from "node:stream";
 import { executor } from "../executor.js";
 
 export interface WsBroadcast {
   broadcast: (event: string, data: unknown) => void;
 }
 
-export function setupWebSocket(server: Server): WsBroadcast {
-  const wss = new WebSocketServer({ server, path: "/ws" });
+export interface LegacyWss {
+  wss: WebSocketServer;
+  broadcast: (event: string, data: unknown) => void;
+  /** Handle an upgrade request for the legacy /ws path. */
+  handleUpgrade: (req: IncomingMessage, socket: Duplex, head: Buffer) => void;
+}
+
+/**
+ * Set up the legacy dashboard WebSocket using noServer mode.
+ * The caller is responsible for routing upgrade requests to handleUpgrade().
+ */
+export function setupWebSocket(_server: Server): LegacyWss {
+  const wss = new WebSocketServer({ noServer: true });
 
   function broadcast(event: string, data: unknown): void {
     const message = JSON.stringify({ event, data, timestamp: new Date().toISOString() });
@@ -30,5 +42,11 @@ export function setupWebSocket(server: Server): WsBroadcast {
     ws.send(JSON.stringify(status));
   });
 
-  return { broadcast };
+  function handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit("connection", ws, req);
+    });
+  }
+
+  return { wss, broadcast, handleUpgrade };
 }
