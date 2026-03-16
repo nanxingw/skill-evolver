@@ -3,7 +3,10 @@
   import FeatureDetail from "./pages/FeatureDetail.svelte";
   import Explore from "./pages/Explore.svelte";
   import Analytics from "./pages/Analytics.svelte";
-  import { fetchConfig, updateConfig, triggerEvolution } from "./lib/api";
+  import Studio from "./pages/Studio.svelte";
+  import Memory from "./pages/Memory.svelte";
+  import NewWorkModal from "./components/NewWorkModal.svelte";
+  import { fetchConfig, updateConfig, triggerEvolution, fetchWorks, createWorkApi, type WorkSummary } from "./lib/api";
   import { t, getLanguage, setLanguage, subscribe } from "./lib/i18n";
 
   let theme: "light" | "dark" = $state("dark");
@@ -21,11 +24,19 @@
   let researchMessage: string = $state("");
 
   // Tab state
-  type Tab = "works" | "explore" | "analytics";
+  type Tab = "works" | "explore" | "analytics" | "memory";
   let activeTab: Tab = $state("works");
 
   // View state: null = gallery, "new" = new work pipeline, string = existing work
   let activeView: string | null = $state(null);
+
+  // Studio & Modal state
+  let currentWorkId: string | null = $state(null);
+  let showNewWorkModal = $state(false);
+  let showStudio = $state(false);
+
+  // Works from API
+  let works: WorkSummary[] = $state([]);
 
   // Flag to scroll to insights on analytics page
   let scrollToInsightsFlag = $state(false);
@@ -38,43 +49,57 @@
     setTimeout(() => { scrollToInsightsFlag = false; }, 500);
   }
 
-  // Mock works data
-  interface Work {
-    id: string;
-    title: string;
-    titleZh: string;
-    cover: string;
-    date: string;
-    dateZh: string;
-    status: "published" | "draft";
-    likes?: number;
-    comments?: number;
-    newFollowers?: number;
+  async function loadWorks() {
+    try {
+      works = await fetchWorks();
+    } catch {
+      // fallback to empty
+    }
   }
 
-  let mockWorks: Work[] = $state([
-    { id: "w1", title: "3 Tips to 10x Your Reach", titleZh: "播放量翻 10 倍的 3 个技巧", cover: "/covers/cover1.svg", date: "Mar 12", dateZh: "3月12日", status: "published", likes: 2847, comments: 156, newFollowers: 89 },
-    { id: "w2", title: "Why Nobody Watches Your Videos", titleZh: "为什么没人看你的视频", cover: "/covers/cover2.svg", date: "Mar 10", dateZh: "3月10日", status: "published", likes: 5231, comments: 342, newFollowers: 213 },
-    { id: "w3", title: "Hook Formula That Works", titleZh: "百试百灵的开头钩子公式", cover: "/covers/cover3.svg", date: "Mar 8", dateZh: "3月8日", status: "published", likes: 1503, comments: 87, newFollowers: 45 },
-    { id: "w4", title: "Competitor Blind Spots", titleZh: "竞品看不到的盲区", cover: "/covers/cover4.svg", date: "Mar 5", dateZh: "3月5日", status: "draft" },
-    { id: "w5", title: "Weekend Posting Strategy", titleZh: "周末发布策略", cover: "/covers/cover5.svg", date: "Mar 3", dateZh: "3月3日", status: "published", likes: 982, comments: 63, newFollowers: 28 },
-  ]);
-
-  // Simulate real-time metric updates for published works
-  let liveTimer: ReturnType<typeof setInterval> | null = null;
-
-  function startLiveUpdates() {
-    liveTimer = setInterval(() => {
-      mockWorks = mockWorks.map(w => {
-        if (w.status !== "published") return w;
-        return {
-          ...w,
-          likes: (w.likes ?? 0) + Math.floor(Math.random() * 8) + 1,
-          comments: (w.comments ?? 0) + (Math.random() > 0.65 ? Math.floor(Math.random() * 2) + 1 : 0),
-          newFollowers: (w.newFollowers ?? 0) + (Math.random() > 0.8 ? 1 : 0),
-        };
+  async function handleCreateWork(data: { title: string; type: string; platforms: string[]; topicHint: string }) {
+    showNewWorkModal = false;
+    try {
+      const newWork = await createWorkApi({
+        title: data.title || "Untitled",
+        type: data.type as any,
+        platforms: data.platforms,
+        topicHint: data.topicHint || undefined,
       });
-    }, 4000);
+      currentWorkId = newWork.id;
+      showStudio = true;
+      await loadWorks();
+    } catch {
+      // creation failed
+    }
+  }
+
+  function openStudio(workId: string) {
+    currentWorkId = workId;
+    showStudio = true;
+  }
+
+  function closeStudio() {
+    showStudio = false;
+    currentWorkId = null;
+    loadWorks();
+  }
+
+  function workStatusLabel(status: string): string {
+    const map: Record<string, string> = {
+      draft: "workDraft",
+      creating: "workCreating",
+      ready: "workReady",
+      publishing: "workPublishing",
+      published: "workPublished",
+      failed: "workFailed",
+    };
+    return tt(map[status] ?? "workDraft");
+  }
+
+  function workStatusClass(status: string): string {
+    if (status === "published") return "published";
+    return "draft";
   }
 
   async function handleSave() {
@@ -128,10 +153,9 @@
       model = c.model;
       autoRun = c.autoRun;
     } catch {}
-    startLiveUpdates();
+    await loadWorks();
     return () => {
       unsub();
-      if (liveTimer) clearInterval(liveTimer);
     };
   });
 </script>
@@ -161,6 +185,10 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
         {tt("tabAnalytics")}
       </button>
+      <button class="tab-btn" class:active={activeTab === "memory"} onclick={() => { activeTab = "memory"; activeView = null; }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>
+        {tt("tabMemory")}
+      </button>
     </nav>
     <div class="header-actions">
       <div class="lang-switcher">
@@ -181,13 +209,17 @@
   </header>
 
   <main>
-    {#if activeTab === "explore"}
+    {#if showStudio && currentWorkId}
+      <Studio workId={currentWorkId} onBack={closeStudio} />
+    {:else if activeTab === "explore"}
       <Explore />
     {:else if activeTab === "analytics"}
       <Analytics scrollToInsights={scrollToInsightsFlag} />
+    {:else if activeTab === "memory"}
+      <Memory />
     {:else if activeView !== null}
-      {@const work = mockWorks.find(w => w.id === activeView)}
-      <FeatureDetail workId={activeView} workStatus={work?.status ?? "draft"} onBack={() => activeView = null} />
+      {@const w = works.find(w => w.id === activeView)}
+      <FeatureDetail workId={activeView} workStatus={w?.status ?? "draft"} onBack={() => activeView = null} />
     {:else}
       <!-- Greeting Section -->
       <div class="greeting">
@@ -265,7 +297,7 @@
         <h3 class="gallery-title">{tt("myWorks")}</h3>
         <div class="gallery-grid">
           <!-- New Work Card -->
-          <button class="gallery-card new-card" onclick={() => activeView = "new"}>
+          <button class="gallery-card new-card" onclick={() => showNewWorkModal = true}>
             <div class="new-card-inner">
               <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="12" y1="5" x2="12" y2="19"/>
@@ -275,44 +307,38 @@
             </div>
           </button>
 
-          <!-- Existing Works -->
-          {#each mockWorks as work}
-            <button class="gallery-card" onclick={() => activeView = work.id}>
-              <div class="card-cover">
-                <img src={work.cover} alt={work.title} loading="lazy" />
-                {#if work.status === "published"}
-                  <span class="status-badge published">{tt("statusPublished")}</span>
-                {:else}
-                  <span class="status-badge draft">{tt("statusDraft")}</span>
-                {/if}
-              </div>
-              <div class="card-info">
-                <span class="card-title">{lang === "zh" ? work.titleZh : work.title}</span>
-                <span class="card-date">{lang === "zh" ? work.dateZh : work.date}</span>
-                {#if work.status === "published"}
-                  <div class="card-metrics">
-                    <span class="live-dot-sm"></span>
-                    <span class="card-metric">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-                      {(work.likes ?? 0).toLocaleString()}
-                    </span>
-                    <span class="card-metric">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                      {(work.comments ?? 0).toLocaleString()}
-                    </span>
-                    <span class="card-metric follower-metric">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
-                      +{(work.newFollowers ?? 0).toLocaleString()}
+          {#if works.length === 0}
+            <div class="no-works-hint">
+              <p>{tt("noWorks")}</p>
+            </div>
+          {:else}
+            {#each works as w}
+              <button class="gallery-card" onclick={() => openStudio(w.id)}>
+                <div class="card-cover">
+                  <div class="card-cover-placeholder">
+                    <span class="cover-type-icon">
+                      {#if w.type === "short-video"}🎬{:else if w.type === "image-text"}📷{:else if w.type === "long-video"}🎥{:else}📡{/if}
                     </span>
                   </div>
-                {/if}
-              </div>
-            </button>
-          {/each}
+                  <span class="status-badge {workStatusClass(w.status)}">{workStatusLabel(w.status)}</span>
+                </div>
+                <div class="card-info">
+                  <span class="card-title">{w.title}</span>
+                  <span class="card-date">{new Date(w.updatedAt).toLocaleDateString()}</span>
+                </div>
+              </button>
+            {/each}
+          {/if}
         </div>
       </div>
     {/if}
   </main>
+
+  <NewWorkModal
+    open={showNewWorkModal}
+    onClose={() => showNewWorkModal = false}
+    onCreate={handleCreateWork}
+  />
 </div>
 
 <style>
@@ -1068,6 +1094,59 @@
 
   .card-metric.follower-metric svg {
     color: var(--success);
+  }
+
+  /* ── Memory placeholder ───────────────────────────────────────────── */
+  .memory-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    padding: 4rem 1rem;
+    color: var(--text-dim);
+    text-align: center;
+  }
+
+  .memory-placeholder .placeholder-icon {
+    opacity: 0.4;
+  }
+
+  .memory-placeholder h3 {
+    font-size: 1.1rem;
+    font-weight: 650;
+    color: var(--text-muted);
+  }
+
+  .memory-placeholder p {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+  }
+
+  /* ── No works hint ──────────────────────────────────────────────── */
+  .no-works-hint {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    grid-column: 1 / -1;
+    padding: 2rem;
+    color: var(--text-dim);
+    font-size: 0.88rem;
+  }
+
+  /* ── Card cover placeholder ────────────────────────────────────── */
+  .card-cover-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-surface);
+  }
+
+  .cover-type-icon {
+    font-size: 2.5rem;
+    opacity: 0.6;
   }
 
   @media (max-width: 768px) {
