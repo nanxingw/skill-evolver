@@ -57,9 +57,35 @@ Replace one-shot executor pattern with persistent Claude CLI sessions for conten
 - `/ws/browser/:workId` — Frontend connects here (JSON protocol)
 - `/ws` — Existing executor broadcast (unchanged)
 
+### WebSocket Routing Implementation
+
+The existing `ws.ts` uses `WebSocketServer({ path: "/ws" })` which only handles exact path matching. To support parameterized routes (`/ws/cli/:workId`, `/ws/browser/:workId`), the implementation must:
+
+1. Create a single `WebSocketServer` with `noServer: true`
+2. Handle the HTTP server's `upgrade` event manually
+3. Parse the URL to route to the correct handler (cli, browser, or legacy executor)
+
 ### Environment
 
 Must set `CLAUDECODE=undefined` in spawned process env to prevent CLI from thinking it's inside an agent context.
+
+### Prerequisites & Risk Mitigation
+
+**`--sdk-url` validation (CRITICAL)**: Before implementing WsBridge, create a proof-of-concept script (`scripts/test-sdk-url.ts`) that:
+1. Starts a local WebSocket server
+2. Spawns `claude --sdk-url ws://localhost:PORT/test --print --output-format stream-json --input-format stream-json -p ""`
+3. Confirms CLI connects back, sends `system.init`, and accepts multi-turn messages
+4. Documents the required Claude CLI version
+
+**Fallback strategy**: If `--sdk-url` is unavailable, fall back to stdin/stdout pipe-based multi-turn using `--input-format stream-json` over pipes (send NDJSON user messages to stdin, read stream-json from stdout). This is less robust but functional.
+
+### Resume Error Handling
+
+`cliSessionId` is persisted in `work.yaml`. When `resumeSession(workId)` is called:
+1. Read `cliSessionId` from work.yaml
+2. Spawn CLI with `--resume {cliSessionId}`
+3. If CLI exits within 5 seconds (resume failed): clear `cliSessionId`, create a new session
+4. For new session: inject full chat history from `chat-log.jsonl` as system context so Agent has prior conversation awareness
 
 ---
 
@@ -130,9 +156,16 @@ updatedAt: "2026-03-16T08:00:00Z"
 
 ```
 draft → creating → ready → publishing → published
-         ↓                   ↓
-       failed              failed
+         ↓    ↑      ↓         ↓
+       failed  └── ready    failed
+                (user revises)
 ```
+
+Note: `ready → creating` transition is triggered when a user sends a chat message or clicks "Redo" on a pipeline step after all steps were completed.
+
+### Concurrency
+
+Each work has its own `work.yaml` file — no shared write contention. The `works.yaml` index file is a lightweight list (id + title + status + type) that is atomically rewritten on create/delete. Multiple concurrent reads are safe; writes to different work directories are independent.
 
 ### REST API
 
@@ -143,7 +176,7 @@ draft → creating → ready → publishing → published
 | `/api/works/:id` | GET/PUT/DELETE | CRUD work |
 | `/api/works/:id/assets` | GET | List assets |
 | `/api/works/:id/assets/:f` | GET | Serve asset file |
-| `/api/works/:id/chat` | POST | Send message to CLI session |
+| `/api/works/:id/chat` | POST | Send message to CLI session (convenience wrapper for WsBridge.sendMessage; frontend should prefer WebSocket for streaming) |
 | `/api/works/:id/step/:n` | POST | Trigger pipeline step N |
 | `/api/works/:id/publish` | POST | Trigger publish to selected platforms |
 
@@ -195,6 +228,14 @@ interface PlatformAdapter {
 - Rate limit: max 5 publishes per platform per day
 - Dry-run mode: fill form but don't click submit
 - Visible browser for first login (no credential storage)
+
+### Playwright as Optional Dependency
+
+Playwright adds ~300MB of browser binaries. To avoid bloating the npm install for users who don't need publishing:
+- `playwright` is listed in `optionalDependencies` (not `dependencies`)
+- On first publish attempt, check if Playwright is installed; if not, prompt user to run `npx playwright install chromium`
+- All Playwright imports use dynamic `import()` with try/catch
+- Modules 3 and 4 gracefully degrade: if Playwright is unavailable, publish and scrape features are disabled with clear UI messaging
 
 ### REST API
 
@@ -252,6 +293,13 @@ Replace all mock data with real metrics. Two collection modes using Playwright (
 | `/api/collector/status` | GET | Next scheduled run, last stats |
 | `/api/competitors` | GET/POST | CRUD tracked competitor profiles |
 
+### Scraping Resilience
+
+- **Retry**: exponential backoff, max 3 attempts per scrape
+- **CAPTCHA detection**: if detected (page contains CAPTCHA elements), abort scrape and notify user via WebSocket event
+- **Selector versioning**: CSS selectors stored in `~/.skill-evolver/selectors/{platform}.yaml` so they can be updated without code changes when platform UI changes
+- **Circuit breaker**: after 5 consecutive failures for a platform, disable that platform's scraping and alert user. Manual re-enable via API.
+
 ### Config
 
 ```yaml
@@ -271,6 +319,15 @@ collector:
 ### Purpose
 
 Long-term learning via EverMemOS API. Reuses client pattern from `evermem-async/src/evermemos.js`.
+
+### EverMemOS API Contract
+
+- **Base URL**: `https://api.evermind.ai/api/v0`
+- **Auth**: `Authorization: Bearer {apiKey}` header
+- **Add memory**: `POST /memories` — body: `{message_id, create_time, sender, sender_name, content, group_id, group_name, role}`
+- **Search**: `GET /memories/search` — body: `{user_id, query, retrieve_method, top_k, memory_types?, group_ids?}`
+- **Response**: `{result: {memories: [...], profiles: [...], metadata: {episodic_count, profile_count, latency_ms}}}`
+- **Graceful degradation**: If EverMemOS is unreachable (timeout 5s), content creation proceeds without memory injection. A warning badge shows in Studio UI. Memory writes are queued and retried on next successful connection.
 
 ### Memory Categories
 
@@ -351,6 +408,8 @@ memory:
 
 Tabs change from 3 to 5: **Works** | **Studio** (new) | **Explore** | **Analytics** | **Memory** (new)
 
+**Mobile**: Studio is not a top-level tab on mobile — it's entered via a work item. Memory is a sub-section of Analytics on screens < 768px. This keeps the mobile bottom nav to 3-4 items.
+
 ### Studio Layout (three-panel)
 
 | Left Panel (280px) | Center Panel (flex) | Right Panel (320px) |
@@ -401,9 +460,32 @@ Tabs change from 3 to 5: **Works** | **Studio** (new) | **Explore** | **Analytic
 
 | Package | Purpose | Module |
 |---------|---------|--------|
-| `playwright` | Browser automation for publishing + scraping | 3, 4 |
+| `playwright` | Browser automation for publishing + scraping (optional, lazy-install) | 3, 4 |
 | (none new for WsBridge) | Uses native `ws` WebSocket from Node.js | 1 |
 | (none new for EverMemOS) | Uses native `https`/`fetch` | 5 |
+
+---
+
+## Config Schema (all new fields)
+
+All additions to the existing `Config` interface in `src/config.ts`:
+
+```typescript
+// New fields (with defaults)
+collector: {
+  trendInterval: string       // "6h"
+  metricsEnabled: boolean     // true
+  trendEnabled: boolean       // true
+  competitors: Array<{platform: string, profileUrl: string, name: string}>  // []
+}
+memory: {
+  apiKey: string              // "" (required for memory features)
+  userId: string              // "autoviral-user"
+  weeklyReview: boolean       // true
+  reviewDay: string           // "sunday"
+  reviewTime: string          // "09:00"
+}
+```
 
 ---
 
