@@ -1,245 +1,136 @@
-<h1 align="center">AutoCode</h1>
+<h1 align="center">AutoViral</h1>
 
 <p align="center">
-  <strong>Self-evolving intelligence for Claude Code — skills, memory, and autonomous tasks.</strong>
+  <strong>AI-powered social media research engine — discover trends, analyze competitors, create smarter content.</strong>
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/autocode-cli"><img src="https://img.shields.io/npm/v/autocode-cli.svg" alt="npm version"></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/node/v/autocode-cli.svg" alt="Node.js"></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
 </p>
 
-**Two commands. Your Claude Code starts evolving.**
+<p align="center">
+  <img src="docs/screenshots/hero.png" alt="AutoViral Dashboard" width="720" />
+</p>
 
-```bash
-npm install -g autocode-cli
-autocode start
-```
+---
 
-AutoCode runs in the background — reviewing your past sessions, building long-term memory, creating reusable skills, and scheduling autonomous tasks — all without manual intervention.
+**AutoViral** is a local-first AI research assistant for content creators. It runs in the background, continuously analyzing trending content across YouTube and TikTok, studying your competitors, and surfacing actionable insights — so you always know what to post next.
 
 ## The Problem
 
-Claude Code is powerful, but it doesn't learn. Every session starts from zero. Failed approaches repeat, successful patterns are forgotten, user preferences must be re-explained. The built-in skill system exists, but skills don't write themselves.
+Content creators spend hours every week on research — scrolling through trending feeds, tracking competitors, analyzing what works. By the time you've gathered enough data, the trend has moved on. And the insights you found last week? Forgotten.
 
-## What AutoCode Does
+## How AutoViral Works
 
-AutoCode is a background daemon that periodically spawns Claude Code instances to reflect on your conversation history. Three specialized agents run in parallel:
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│                        AutoCode                              │
-│                                                              │
-│   ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│   │   Context    │  │    Skill    │  │    Task     │        │
-│   │   Agent      │  │    Agent    │  │    Agent    │        │
-│   │             │  │             │  │             │        │
-│   │ Who is the  │  │ What skills │  │ What tasks  │        │
-│   │ user?       │  │ are needed? │  │ should run? │        │
-│   └──────┬──────┘  └──────┬──────┘  └──────┬──────┘        │
-│          │                │                │                │
-│          ▼                ▼                ▼                │
-│   ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│   │ Preferences │  │  New Skills │  │ Scheduled   │        │
-│   │ Objectives  │  │  Experience │  │ Tasks       │        │
-│   │ Cognition   │  │  Evolution  │  │ Automation  │        │
-│   └─────────────┘  └─────────────┘  └─────────────┘        │
-│                                                              │
-│   ◄──────── Task-Skill Co-Evolution Loop ────────►          │
-│   Tasks fail → skill-need signal → Skill Agent creates      │
-│   skill → Tasks leverage skill → better execution           │
-└──────────────────────────────────────────────────────────────┘
-```
-
-### Context Agent — Long-term Memory
-
-Maintains a persistent user profile across three pillars:
-
-- **Preference** — tool choices, code style, communication preferences
-- **Objective** — current projects, goals, career direction
-- **Cognition** — personality traits, decision patterns, communication style
-
-Signals accumulate in `tmp/` and graduate to confirmed knowledge only with strong evidence (3+ sessions, 2+ days).
-
-### Skill Agent — Need-driven Skill Creation
-
-Actively discovers unmet needs and creates skills to address them:
-
-1. Analyzes user objectives, preferences, experience, session logs, and **task execution patterns**
-2. Searches external sources (SkillHub, GitHub, Anthropic official)
-3. Creates or evolves skills using [skill-creator](https://github.com/anthropics/claude-code/tree/main/plugins/skill-creator) methodology
-4. Responds to **skill-need signals** from failed tasks as priority needs
-
-### Task Agent — Autonomous Task Scheduling
-
-Decomposes user objectives into actionable automated tasks:
-
-- **Information gathering** — news, trends, research summaries
-- **Quality checks** — linting, type-checking, dependency audits
-- **Monitoring** — progress tracking, status reports
-- **Skill-building** — tasks that create or improve skills, closing the co-evolution loop
-
-## Co-Evolution: Tasks and Skills Reinforce Each Other
-
-AutoCode's unique feature is the **task-skill co-evolution loop**:
+AutoViral runs a background AI research engine that does the heavy lifting:
 
 ```
-User Objectives → Task Agent creates tasks → Tasks execute
-       ↑                                          ↓
-  Skills enhance                           Results & failures
-  task execution                                  ↓
-       ↑                                  Post-task review
-  Skill Agent ◄──── skill-need signals ◄── emits signals
+┌─────────────────────────────────────────────────────────┐
+│                      AutoViral                          │
+│                                                         │
+│   ┌──────────────┐  ┌──────────────┐  ┌─────────────┐  │
+│   │   Trend       │  │  Competitor  │  │  Content    │  │
+│   │   Research    │  │  Analysis    │  │  Insights   │  │
+│   │              │  │              │  │             │  │
+│   │ What's hot   │  │ What others  │  │ What should │  │
+│   │ right now?   │  │ are doing?   │  │ YOU create? │  │
+│   └──────┬───────┘  └──────┬───────┘  └──────┬──────┘  │
+│          │                 │                 │          │
+│          ▼                 ▼                 ▼          │
+│   ┌──────────────────────────────────────────────────┐  │
+│   │              Personalized Feed                   │  │
+│   │  Trends + Competitor gaps + Your style profile   │  │
+│   │         = Content ideas that actually work       │  │
+│   └──────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────┘
 ```
 
-- When a task struggles or fails, the post-task review emits a **skill-need signal**
-- The Skill Agent picks up these signals and creates skills to prevent future failures
-- Tasks declare **related skills** (`relatedSkills` field) so executors leverage existing knowledge
-- The Task Agent can create **skill-building tasks** — tasks whose purpose is to create new skills
+### Works — Your Content Hub
+
+Manage all your content projects in one place. Each "work" is a content piece — from initial idea through research to final draft. AutoViral tracks what you've created so it can recommend what to create next.
+
+### Explore — Real-time Trend Discovery
+
+Live trending data from YouTube and TikTok:
+
+- **Trending Videos** — top-performing content with view counts, likes, and engagement metrics
+- **Hot Topics** — hashtags and topics gaining momentum right now
+- **Cross-platform comparison** — see what works on YouTube vs TikTok side by side
+
+### Analytics — Know Your Audience
+
+Your personal creator dashboard:
+
+- **Style Profile** — AI-detected content style tags based on your work
+- **Fan Demographics** — age, gender, and regional breakdown of your audience
+- **Research Overview** — total content analyzed, insights generated, and activity stats
+- **Latest Insights** — actionable recommendations like "Shorts under 30s outperform longer ones by 2.3x" or "Hook within first 1.5s critical for TikTok retention"
 
 ## Getting Started
-
-### Install
-
-```bash
-npm install -g autocode-cli
-```
-
-This automatically:
-- Installs the AutoCode CLI
-- Copies three meta-skills (user-context, skill-evolver, task-planner) to `~/.claude/skills/`
-- Installs [skill-creator](https://github.com/anthropics/claude-code/tree/main/plugins/skill-creator) from the official Anthropic repo
 
 ### Prerequisites
 
 - Node.js >= 18
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
 
-### Usage
+### Install & Run
 
 ```bash
-# Start the daemon (background + web dashboard)
-autocode start
+# Clone the repo
+git clone https://github.com/nanxingw/AutoViral.git
+cd AutoViral
 
-# Run a single evolution cycle
-autocode evolve
+# Install dependencies
+npm install
 
-# Open the dashboard
-autocode dashboard
-
-# Check status
-autocode status
-
-# Stop the daemon
-autocode stop
+# Build and start
+npm run build
+autoviral start
 ```
 
-### Web Dashboard
+The dashboard opens at **http://localhost:3271**.
 
-Available at `http://localhost:3271`:
+### Configuration
 
-- **Dashboard** — live status, real-time evolution output, manual trigger
-- **Tasks** — create, manage, and monitor autonomous tasks
-- **Reports** — complete history of evolution cycle reports
-- **Data Browser** — browse all 6 data pillars (user context + technical experience)
-- **Skills** — view evolved skills inventory
-- **Settings** — configure interval, model, evolution mode, auto-run
-
-Real-time updates via WebSocket.
-
-## Configuration
-
-Stored in `~/.skill-evolver/config.yaml`.
+Stored in `~/.skill-evolver/config.yaml`:
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `interval` | `1h` | Time between evolution cycles |
-| `model` | `opus` | Claude model for evolution agents |
-| `evolutionMode` | `multi` | `"multi"` (3 parallel agents) or `"single"` (backward compat) |
-| `autoRun` | `true` | Auto-run cycles on interval |
-| `taskAutoApprove` | `true` | Agent-created tasks auto-approved or need user approval |
-| `port` | `3271` | Web dashboard port |
-| `maxReports` | `50` | Max evolution reports to keep |
-| `reportsToFeed` | `5` | Recent reports fed as context to agents |
+| `interval` | `1h` | Time between research cycles |
+| `model` | `sonnet` | AI model for research agents |
+| `autoRun` | `true` | Auto-run research on interval |
+| `port` | `3271` | Dashboard port |
 
-CLI configuration:
+## Features
 
-```bash
-autocode config set interval 30m
-autocode config set model sonnet
-autocode config set evolutionMode single
-autocode config get
-```
+| Feature | Description |
+|---------|-------------|
+| **Background Research** | AI continuously monitors trends while you focus on creating |
+| **Multi-platform** | YouTube and TikTok trending data in one view |
+| **Competitor Analysis** | Track what's working for others in your niche |
+| **Style Profiling** | AI learns your content style and tailors recommendations |
+| **Audience Insights** | Demographics and engagement patterns for your content |
+| **Bilingual UI** | Full English and Chinese (中文) interface |
+| **Dark Mode** | Easy on the eyes with elegant Glass Noir theme |
+| **Mobile Responsive** | Full functionality on any device |
 
-## Architecture
+## Tech Stack
 
-### Three Meta-Skills
-
-AutoCode installs three skills into `~/.claude/skills/` that serve dual purposes — providing context during normal Claude Code sessions and guiding background evolution:
-
-| Skill | Runtime Purpose | Evolution Purpose |
-|-------|----------------|-------------------|
-| **user-context** | Personalize responses using confirmed user profile | Context Agent extracts and graduates user signals |
-| **skill-evolver** | Avoid known pitfalls, apply proven approaches | Skill Agent discovers needs, creates/evolves skills |
-| **task-planner** | Help users create and manage tasks | Task Agent decomposes objectives, schedules automation |
-
-### Evidence-Based Evolution
-
-AutoCode uses an **accumulate-then-graduate** approach to prevent premature conclusions:
-
-1. **Signals** extracted from session logs, tagged with session ID and date
-2. **Accumulation** in `tmp/` YAML files with deduplication
-3. **Graduation** only with 3+ signals spanning 2+ days, no contradictions
-4. **Staleness** auto-cleaned — 60+ day entries with few signals removed
-
-### File Structure
-
-```
-~/.claude/skills/
-  user-context/                 # User profile (preference, objective, cognition)
-    SKILL.md
-    context/                    # Graduated knowledge
-    tmp/                        # Accumulating signals
-    scripts/                    # Session search tools (5 scripts)
-
-  skill-evolver/                # Technical experience + skill creation
-    SKILL.md
-    reference/permitted_skills.md
-    tmp/                        # Experience + skill_needs.yaml
-
-  task-planner/                 # Task scheduling
-    SKILL.md
-    buffer/ideas.yaml
-    reference/                  # Task schema + guides
-
-  skill-creator/                # Official Anthropic skill creation tool
-
-~/.skill-evolver/
-  config.yaml                   # Configuration
-  reports/                      # Evolution cycle reports
-  tasks/
-    tasks.yaml                  # Central task store
-    <task-id>/artifacts/        # Persistent task artifacts
-    <task-id>/reports/          # Per-task execution reports
-```
-
-## Documentation
-
-Detailed Chinese documentation available in `docs/`:
-
-- [System Architecture](docs/system-architecture.md) — complete system design and data flow
-- [user-context Skill](docs/skill-user-context.md) — three pillars, graduation mechanism, session scripts
-- [skill-evolver Skill](docs/skill-skill-evolver.md) — need-driven workflow, skill-creator integration
-- [task-planner Skill](docs/skill-task-planner.md) — task lifecycle, skill-building tasks, safety tiers
+- **Backend** — Node.js, Hono, TypeScript
+- **Frontend** — Svelte 5, Vite
+- **AI Engine** — Claude (via Claude Code CLI)
+- **Real-time** — WebSocket for live updates
+- **Design** — Glass Noir theme, responsive layout
 
 ## Roadmap
 
-- [ ] **Config migration** — migrate `~/.skill-evolver/` to `~/.autocode/`
-- [ ] **Multi-CLI support** — extend beyond Claude Code to support Codex, Gemini CLI, and other AI coding agents
-- [ ] **Richer information sources** — ingest browser history, Git commit logs, and IDE activity
-- [ ] **Cross-machine sync** — optional cloud sync for user context and evolved skills
-- [ ] **Skill marketplace** — share and discover community-created evolved skills
+- [ ] **Platform expansion** — Instagram Reels, X/Twitter, Reddit
+- [ ] **Content calendar** — AI-suggested posting schedule based on audience activity
+- [ ] **Auto-drafting** — Generate scripts and captions from research insights
+- [ ] **Analytics API** — Connect real YouTube/TikTok analytics for personalized recommendations
+- [ ] **Team collaboration** — Share research and insights across creator teams
+- [ ] **Trend alerts** — Push notifications when relevant trends emerge
 
 ## License
 
