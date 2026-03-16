@@ -848,3 +848,56 @@ apiRoutes.post("/api/competitors", async (c) => {
     return c.json({ error: err instanceof Error ? err.message : "Failed to update competitors" }, 400);
   }
 });
+
+// ---------------------------------------------------------------------------
+// Memory API (EverMemOS integration)
+// ---------------------------------------------------------------------------
+
+// Lazily-initialized MemoryClient (singleton)
+let _memoryClient: MemoryClient | null | undefined;
+async function getMemoryClient(): Promise<MemoryClient | null> {
+  if (_memoryClient === undefined) {
+    _memoryClient = await MemoryClient.fromConfig();
+  }
+  return _memoryClient;
+}
+
+// GET /api/memory/search?q=...&method=hybrid&topK=10
+apiRoutes.get("/api/memory/search", async (c) => {
+  const client = await getMemoryClient();
+  if (!client) return c.json({ error: "Memory not configured (missing apiKey)" }, 503);
+  const q = c.req.query("q") ?? "";
+  if (!q) return c.json({ error: "Missing query parameter ?q=" }, 400);
+  const method = (c.req.query("method") ?? "hybrid") as "keyword" | "vector" | "hybrid" | "agentic";
+  const topK = parseInt(c.req.query("topK") ?? "10", 10);
+  const result = await client.search(q, { method, topK });
+  return c.json(result);
+});
+
+// GET /api/memory/profile — style profiles + platform rules
+apiRoutes.get("/api/memory/profile", async (c) => {
+  const client = await getMemoryClient();
+  if (!client) return c.json({ error: "Memory not configured (missing apiKey)" }, 503);
+  const [style, rules] = await Promise.all([
+    client.search("我的内容风格 创作偏好 个人特征", { method: "vector", topK: 10, memoryTypes: ["core", "profile"] }),
+    client.search("平台规则 算法推荐 发布技巧", { method: "keyword", topK: 10 }),
+  ]);
+  return c.json({
+    profiles: style.profiles,
+    styleMemories: style.memories,
+    platformRules: rules.memories,
+  });
+});
+
+// GET /api/memory/context/:workId — memory context for a work (debug)
+apiRoutes.get("/api/memory/context/:workId", async (c) => {
+  const client = await getMemoryClient();
+  if (!client) return c.json({ error: "Memory not configured (missing apiKey)" }, 503);
+  const workId = c.req.param("workId");
+  const work = await getWork(workId);
+  if (!work) return c.json({ error: "Work not found" }, 404);
+  const topic = work.topicHint ?? work.title;
+  const platform = work.platforms?.[0]?.platform ?? "通用";
+  const context = await client.buildContext(topic, platform);
+  return c.json({ workId, topic, platform, context });
+});
