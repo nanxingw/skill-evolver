@@ -20,8 +20,17 @@ import {
   listAssets, getAssetPath,
 } from "../work-store.js";
 import { MemoryClient } from "../memory.js";
+import { getPublishEngine } from "../publish-engine.js";
+import type { WsBridge } from "../ws-bridge.js";
 
 export const apiRoutes = new Hono();
+
+// ── WsBridge accessor (set by server/index.ts after construction) ─────────
+let wsBridge: WsBridge | null = null;
+
+export function setWsBridge(bridge: WsBridge): void {
+  wsBridge = bridge;
+}
 
 // ── Helper: compute a report path for a task run ────────────────────────────
 function taskReportDir(taskId: string): string {
@@ -850,6 +859,73 @@ apiRoutes.post("/api/competitors", async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// Work Chat API (WsBridge)
+// ---------------------------------------------------------------------------
+
+// POST /api/works/:id/chat — send a message to the CLI session for a work
+apiRoutes.post("/api/works/:id/chat", async (c) => {
+  const id = c.req.param("id");
+  if (!wsBridge) return c.json({ error: "WsBridge not initialized" }, 503);
+
+  try {
+    const body = await c.req.json<{ text: string }>();
+    if (!body.text) return c.json({ error: "text is required" }, 400);
+
+    // Ensure session exists
+    let session = wsBridge.getSession(id);
+    if (!session) {
+      // Auto-create a session with the message as the initial prompt
+      const config = await loadConfig();
+      session = wsBridge.createSession(id, body.text, config.model);
+      return c.json({ sent: true, sessionCreated: true, workId: id });
+    }
+
+    const sent = wsBridge.sendMessage(id, body.text);
+    if (!sent) return c.json({ error: "Failed to send message" }, 500);
+    return c.json({ sent: true, workId: id });
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : "Chat error" }, 500);
+  }
+});
+
+// POST /api/works/:id/step/:step — trigger a specific pipeline step via prompt
+apiRoutes.post("/api/works/:id/step/:step", async (c) => {
+  const id = c.req.param("id");
+  const step = c.req.param("step");
+  if (!wsBridge) return c.json({ error: "WsBridge not initialized" }, 503);
+
+  try {
+    const work = await getWork(id);
+    if (!work) return c.json({ error: "Work not found" }, 404);
+
+    const pipelineStep = work.pipeline[step];
+    if (!pipelineStep) return c.json({ error: `Unknown pipeline step: ${step}` }, 404);
+
+    // Build a step-specific prompt
+    const prompt = [
+      `You are working on a content piece: "${work.title}" (type: ${work.type}).`,
+      `Platforms: ${work.platforms.map(p => p.platform).join(", ")}.`,
+      work.topicHint ? `Topic hint: ${work.topicHint}` : "",
+      ``,
+      `Execute the "${pipelineStep.name}" step of the pipeline.`,
+      `Produce output appropriate for this step. Be thorough and creative.`,
+    ].filter(Boolean).join("\n");
+
+    const config = await loadConfig();
+    let session = wsBridge.getSession(id);
+    if (!session) {
+      session = wsBridge.createSession(id, prompt, config.model);
+      return c.json({ triggered: true, sessionCreated: true, workId: id, step });
+    }
+
+    wsBridge.sendMessage(id, prompt);
+    return c.json({ triggered: true, workId: id, step });
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : "Step trigger error" }, 500);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Memory API (EverMemOS integration)
 // ---------------------------------------------------------------------------
 
@@ -900,4 +976,175 @@ apiRoutes.get("/api/memory/context/:workId", async (c) => {
   const platform = work.platforms?.[0]?.platform ?? "通用";
   const context = await client.buildContext(topic, platform);
   return c.json({ workId, topic, platform, context });
+});
+
+// ---------------------------------------------------------------------------
+// Publish Engine API
+// ---------------------------------------------------------------------------
+
+// GET /api/platforms — list platforms with available + loggedIn status
+apiRoutes.get("/api/platforms", async (c) => {
+  try {
+    const engine = getPublishEngine();
+    const available = engine.isAvailable();
+    const platforms = engine.listPlatforms();
+
+    const result = await Promise.all(
+      platforms.map(async (name) => {
+        let loggedIn = false;
+        if (available) {
+          try {
+            loggedIn = await engine.checkLoginStatus(name);
+          } catch { /* ignore */ }
+        }
+        const adapter = engine.getAdapter(name);
+        return {
+          name,
+          available,
+          loggedIn,
+          loginUrl: adapter?.loginUrl ?? "",
+          publishUrl: adapter?.publishUrl ?? "",
+        };
+      }),
+    );
+
+    return c.json({ platforms: result });
+  } catch {
+    return c.json({ platforms: [] });
+  }
+});
+
+// POST /api/platforms/:name/login — open visible browser for QR login
+apiRoutes.post("/api/platforms/:name/login", async (c) => {
+  const name = c.req.param("name");
+  try {
+    const engine = getPublishEngine();
+    if (!engine.isAvailable()) {
+      // Try to initialize
+      await engine.init();
+      if (!engine.isAvailable()) {
+        return c.json({ error: "Playwright is not installed. Run: npx playwright install chromium" }, 503);
+      }
+    }
+
+    const adapter = engine.getAdapter(name);
+    if (!adapter) {
+      return c.json({ error: `Unknown platform: ${name}` }, 404);
+    }
+
+    // Open login in background (non-blocking for the API response)
+    // The browser will stay open for the user to scan QR code
+    const loginPromise = engine.openLogin(name);
+
+    // Return immediately — user interacts with the browser window
+    // We give a short grace period then respond
+    const success = await Promise.race([
+      loginPromise,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 3_000)),
+    ]);
+
+    if (success === true) {
+      return c.json({ success: true, message: "Login successful" });
+    } else if (success === false) {
+      return c.json({ success: false, error: "Login failed or timed out" });
+    } else {
+      // Still waiting — browser is open for QR scan
+      return c.json({
+        success: false,
+        pending: true,
+        message: "Browser opened for login. Please scan the QR code.",
+      });
+    }
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : "Login failed" }, 500);
+  }
+});
+
+// GET /api/platforms/:name/status — check login status
+apiRoutes.get("/api/platforms/:name/status", async (c) => {
+  const name = c.req.param("name");
+  try {
+    const engine = getPublishEngine();
+    const adapter = engine.getAdapter(name);
+    if (!adapter) {
+      return c.json({ error: `Unknown platform: ${name}` }, 404);
+    }
+
+    if (!engine.isAvailable()) {
+      return c.json({ platform: name, available: false, loggedIn: false });
+    }
+
+    const loggedIn = await engine.checkLoginStatus(name);
+    return c.json({ platform: name, available: true, loggedIn });
+  } catch {
+    return c.json({ platform: name, available: false, loggedIn: false });
+  }
+});
+
+// POST /api/works/:id/publish — trigger publish with {platforms:[]}
+apiRoutes.post("/api/works/:id/publish", async (c) => {
+  const id = c.req.param("id");
+  try {
+    const work = await getWork(id);
+    if (!work) return c.json({ error: "Work not found" }, 404);
+
+    const body = await c.req.json<{ platforms?: string[] }>();
+    const targetPlatforms = body.platforms ?? work.platforms.map((p: any) => p.platform);
+
+    if (!targetPlatforms || targetPlatforms.length === 0) {
+      return c.json({ error: "No platforms specified" }, 400);
+    }
+
+    const engine = getPublishEngine();
+    if (!engine.isAvailable()) {
+      await engine.init();
+      if (!engine.isAvailable()) {
+        return c.json({ error: "Playwright is not installed" }, 503);
+      }
+    }
+
+    // Build publish content from work data
+    // Work may have extended fields stored in YAML beyond the TS interface
+    const workAny = work as any;
+    const content = {
+      title: work.title,
+      body: workAny.body ?? workAny.description ?? work.topicHint ?? "",
+      tags: workAny.tags ?? [],
+      mediaFiles: workAny.mediaFiles ?? [],
+      coverImage: work.coverImage,
+    };
+
+    // Update work status
+    await storeUpdateWork(id, { status: "publishing" });
+
+    const results: Record<string, any> = {};
+    let anySuccess = false;
+
+    for (const platform of targetPlatforms) {
+      const result = await engine.publish(platform, content);
+      results[platform] = result;
+      if (result.success) anySuccess = true;
+
+      // Update platform-specific status on the work
+      try {
+        const freshWork = await getWork(id);
+        if (freshWork) {
+          const platEntry = freshWork.platforms.find((p: any) => p.platform === platform);
+          if (platEntry) {
+            platEntry.publishedUrl = result.postUrl;
+            platEntry.publishedAt = new Date().toISOString();
+            (platEntry as any).status = result.success ? "published" : "failed";
+          }
+          await storeUpdateWork(id, { platforms: freshWork.platforms });
+        }
+      } catch { /* ignore partial update failure */ }
+    }
+
+    // Update overall work status
+    await storeUpdateWork(id, { status: anySuccess ? "published" : "failed" });
+
+    return c.json({ results });
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : "Publish failed" }, 500);
+  }
 });
