@@ -46,16 +46,36 @@
     cover: string;
     date: string;
     dateZh: string;
-    status: "complete" | "draft";
+    status: "published" | "draft";
+    likes?: number;
+    comments?: number;
+    newFollowers?: number;
   }
 
-  const mockWorks: Work[] = [
-    { id: "w1", title: "3 Tips to 10x Your Reach", titleZh: "播放量翻 10 倍的 3 个技巧", cover: "/covers/cover1.svg", date: "Mar 12", dateZh: "3月12日", status: "complete" },
-    { id: "w2", title: "Why Nobody Watches Your Videos", titleZh: "为什么没人看你的视频", cover: "/covers/cover2.svg", date: "Mar 10", dateZh: "3月10日", status: "complete" },
-    { id: "w3", title: "Hook Formula That Works", titleZh: "百试百灵的开头钩子公式", cover: "/covers/cover3.svg", date: "Mar 8", dateZh: "3月8日", status: "complete" },
+  let mockWorks: Work[] = $state([
+    { id: "w1", title: "3 Tips to 10x Your Reach", titleZh: "播放量翻 10 倍的 3 个技巧", cover: "/covers/cover1.svg", date: "Mar 12", dateZh: "3月12日", status: "published", likes: 2847, comments: 156, newFollowers: 89 },
+    { id: "w2", title: "Why Nobody Watches Your Videos", titleZh: "为什么没人看你的视频", cover: "/covers/cover2.svg", date: "Mar 10", dateZh: "3月10日", status: "published", likes: 5231, comments: 342, newFollowers: 213 },
+    { id: "w3", title: "Hook Formula That Works", titleZh: "百试百灵的开头钩子公式", cover: "/covers/cover3.svg", date: "Mar 8", dateZh: "3月8日", status: "published", likes: 1503, comments: 87, newFollowers: 45 },
     { id: "w4", title: "Competitor Blind Spots", titleZh: "竞品看不到的盲区", cover: "/covers/cover4.svg", date: "Mar 5", dateZh: "3月5日", status: "draft" },
-    { id: "w5", title: "Weekend Posting Strategy", titleZh: "周末发布策略", cover: "/covers/cover5.svg", date: "Mar 3", dateZh: "3月3日", status: "complete" },
-  ];
+    { id: "w5", title: "Weekend Posting Strategy", titleZh: "周末发布策略", cover: "/covers/cover5.svg", date: "Mar 3", dateZh: "3月3日", status: "published", likes: 982, comments: 63, newFollowers: 28 },
+  ]);
+
+  // Simulate real-time metric updates for published works
+  let liveTimer: ReturnType<typeof setInterval> | null = null;
+
+  function startLiveUpdates() {
+    liveTimer = setInterval(() => {
+      mockWorks = mockWorks.map(w => {
+        if (w.status !== "published") return w;
+        return {
+          ...w,
+          likes: (w.likes ?? 0) + Math.floor(Math.random() * 8) + 1,
+          comments: (w.comments ?? 0) + (Math.random() > 0.65 ? Math.floor(Math.random() * 2) + 1 : 0),
+          newFollowers: (w.newFollowers ?? 0) + (Math.random() > 0.8 ? 1 : 0),
+        };
+      });
+    }, 4000);
+  }
 
   async function handleSave() {
     saving = true;
@@ -108,7 +128,11 @@
       model = c.model;
       autoRun = c.autoRun;
     } catch {}
-    return () => unsub();
+    startLiveUpdates();
+    return () => {
+      unsub();
+      if (liveTimer) clearInterval(liveTimer);
+    };
   });
 </script>
 
@@ -162,7 +186,8 @@
     {:else if activeTab === "analytics"}
       <Analytics scrollToInsights={scrollToInsightsFlag} />
     {:else if activeView !== null}
-      <FeatureDetail workId={activeView} onBack={() => activeView = null} />
+      {@const work = mockWorks.find(w => w.id === activeView)}
+      <FeatureDetail workId={activeView} workStatus={work?.status ?? "draft"} onBack={() => activeView = null} />
     {:else}
       <!-- Greeting Section -->
       <div class="greeting">
@@ -255,13 +280,32 @@
             <button class="gallery-card" onclick={() => activeView = work.id}>
               <div class="card-cover">
                 <img src={work.cover} alt={work.title} loading="lazy" />
-                {#if work.status === "draft"}
-                  <span class="draft-badge">Draft</span>
+                {#if work.status === "published"}
+                  <span class="status-badge published">{tt("statusPublished")}</span>
+                {:else}
+                  <span class="status-badge draft">{tt("statusDraft")}</span>
                 {/if}
               </div>
               <div class="card-info">
                 <span class="card-title">{lang === "zh" ? work.titleZh : work.title}</span>
                 <span class="card-date">{lang === "zh" ? work.dateZh : work.date}</span>
+                {#if work.status === "published"}
+                  <div class="card-metrics">
+                    <span class="live-dot-sm"></span>
+                    <span class="card-metric">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                      {(work.likes ?? 0).toLocaleString()}
+                    </span>
+                    <span class="card-metric">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                      {(work.comments ?? 0).toLocaleString()}
+                    </span>
+                    <span class="card-metric follower-metric">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+                      +{(work.newFollowers ?? 0).toLocaleString()}
+                    </span>
+                  </div>
+                {/if}
               </div>
             </button>
           {/each}
@@ -412,7 +456,6 @@
     gap: 1.5rem;
     padding: 1.25rem 0;
     margin-bottom: 2.5rem;
-    border-bottom: 1px solid var(--border);
     position: sticky;
     top: 0;
     z-index: 100;
@@ -935,7 +978,7 @@
     transform: scale(1.03);
   }
 
-  .draft-badge {
+  .status-badge {
     position: absolute;
     top: 0.6rem;
     right: 0.6rem;
@@ -943,12 +986,19 @@
     font-weight: 700;
     padding: 0.2rem 0.6rem;
     border-radius: 9999px;
-    background: rgba(0,0,0,0.55);
-    color: #fff;
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.04em;
+  }
+
+  .status-badge.published {
+    background: rgba(52, 211, 153, 0.2);
+    color: #34d399;
+  }
+
+  .status-badge.draft {
+    background: rgba(0,0,0,0.55);
+    color: #fff;
   }
 
   .card-info {
@@ -973,6 +1023,51 @@
     font-size: 0.72rem;
     color: var(--text-dim);
     font-weight: 500;
+  }
+
+  /* ── Live dot & card metrics ──────────────────────────── */
+  .live-dot-sm {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #34d399;
+    flex-shrink: 0;
+    animation: live-blink 1.5s ease-in-out infinite;
+  }
+
+  @keyframes live-blink {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.5); }
+    50% { opacity: 0.35; box-shadow: 0 0 8px 3px rgba(52, 211, 153, 0.25); }
+  }
+
+  .card-metrics {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-top: 0.15rem;
+  }
+
+  .card-metric {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    font-weight: 550;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .card-metric svg {
+    color: var(--text-dim);
+    flex-shrink: 0;
+  }
+
+  .card-metric.follower-metric {
+    color: var(--success);
+  }
+
+  .card-metric.follower-metric svg {
+    color: var(--success);
   }
 
   @media (max-width: 768px) {

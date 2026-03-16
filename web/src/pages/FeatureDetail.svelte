@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { onMount, onDestroy, tick } from "svelte";
   import { triggerEvolution } from "../lib/api";
   import { t, getLanguage, subscribe } from "../lib/i18n";
 
-  let { workId, onBack }: { workId: string; onBack: () => void } = $props();
+  let { workId, workStatus = "draft", onBack }: { workId: string; workStatus?: string; onBack: () => void } = $props();
 
   let lang = $state(getLanguage());
   function tt(key: string): string { void lang; return t(key); }
@@ -51,11 +51,20 @@
 
   function handleSaveDirections() {
     // Persist to localStorage
-    const data = { directions: stepDirections, competitorUrls };
+    const data = { directions: stepDirections, competitorUrls, wantAppearance };
     localStorage.setItem(`cp-work-${workId}`, JSON.stringify(data));
     saveMessage = t("directionsSaved");
     setTimeout(() => { saveMessage = ""; }, 2000);
   }
+
+  function handleSaveDirection(stepIndex: number) {
+    handleSaveDirections();
+    showDirectionPanel = null;
+    markChanged();
+  }
+
+  // Track uploaded file names for step 5
+  let uploadedFileName = $state("");
 
   function loadSavedDirections() {
     try {
@@ -64,6 +73,7 @@
         const data = JSON.parse(raw);
         if (data.directions) stepDirections = data.directions;
         if (data.competitorUrls) competitorUrls = data.competitorUrls;
+        if (data.wantAppearance !== undefined) wantAppearance = data.wantAppearance;
       }
     } catch {}
   }
@@ -72,6 +82,10 @@
   let competitorUrls: string[] = $state([]);
   let newUrl = $state("");
   let showCompetitorPanel = $state(false);
+
+  // Appearance on camera toggle
+  let wantAppearance = $state(false);
+  let userFootageUploaded = $state(false);
 
   // Strategy results - active report preview
   let activeReportKey: string | null = $state(null);
@@ -95,51 +109,87 @@
       labelKey: "resultTitle",
       content: "\"3 Things Your Competitors Don't Want You to Know About Short Video Growth\"",
       contentZh: "「你的竞品绝对不想让你知道的短视频涨粉 3 个秘密」",
-      reportContent: "## Title Generation Report\n\nAnalyzed **47 competitor videos** across 3 platforms.\n\n### Key Findings\n- Numbered titles (\"3 things\", \"5 tips\") have **2.3x higher CTR**\n- Curiosity-gap titles outperform direct titles by 45%\n- Competitor mention increases engagement by 30%\n\n### Recommended Variants\n1. \"3 Things Your Competitors Don't Want You to Know\" *(top pick)*\n2. \"Why Your Competitor Gets 10x More Views\"\n3. \"The Growth Secret Nobody Talks About\"\n\n### Data Sources\n- Analyzed top 50 viral videos in your niche\n- Cross-referenced with your past 20 posts' performance\n- Applied A/B title patterns from 1,200+ tested headlines",
-      reportContentZh: "## 标题生成报告\n\n在 3 个平台上分析了 **47 条竞品视频**。\n\n### 核心发现\n- 数字型标题（「3 个秘密」「5 个技巧」）**点击率高出 2.3 倍**\n- 悬念型标题比直白标题互动率高 45%\n- 提及竞品可提升 30% 互动量\n\n### 推荐标题方案\n1. 「你的竞品绝对不想让你知道的 3 个秘密」*（首选）*\n2. 「为什么你的竞品播放量是你的 10 倍」\n3. 「没有人会告诉你的涨粉秘诀」\n\n### 数据来源\n- 分析了你所在赛道 Top 50 爆款视频\n- 交叉对比了你最近 20 条内容的表现\n- 应用了 1,200+ 条 A/B 测试标题的规律",
+      reportContent: "## Title Generation Report\n\nAnalyzed **47 competitor videos** across 3 platforms.\n\n### Key Findings\n- Numbered titles (\"3 things\", \"5 tips\") have **2.3x higher CTR**\n- Curiosity-gap titles outperform direct titles by 45%\n- Competitor mention increases engagement by 30%\n\n### Recommended Variants\n1. \"3 Things Your Competitors Don't Want You to Know\" *(top pick)*\n2. \"Why Your Competitor Gets 10x More Views\"\n3. \"The Growth Secret Nobody Talks About\"",
+      reportContentZh: "## 标题生成报告\n\n在 3 个平台上分析了 **47 条竞品视频**。\n\n### 核心发现\n- 数字型标题（「3 个秘密」「5 个技巧」）**点击率高出 2.3 倍**\n- 悬念型标题比直白标题互动率高 45%\n- 提及竞品可提升 30% 互动量\n\n### 推荐标题方案\n1. 「你的竞品绝对不想让你知道的 3 个秘密」*（首选）*\n2. 「为什么你的竞品播放量是你的 10 倍」\n3. 「没有人会告诉你的涨粉秘诀」",
+    },
+    {
+      key: "preview",
+      labelKey: "resultPreview",
+      content: "60s vertical video — fast-cut style, warm color grading, text overlays on key stats, lo-fi background music",
+      contentZh: "60 秒竖版视频 — 快切风格、暖色调调色、关键数据文字叠加、lo-fi 背景音乐",
+      reportContent: "## Video Production Report\n\n### Technical Specs\n- **Duration**: 60 seconds\n- **Format**: 9:16 vertical\n- **Resolution**: 1080x1920\n- **Style**: Fast cuts every 2.8s\n\n### Visual Elements\n- Warm color grading (your signature look)\n- Text overlays on 5 key statistics\n- Motion graphics for data visualization\n- Subtle zoom transitions\n\n### Audio\n- Background: Lo-fi beat (royalty-free)\n- Voice: AI-generated narration matching your tone\n- Sound effects: Subtle whoosh on transitions",
+      reportContentZh: "## 视频制作报告\n\n### 技术参数\n- **时长**：60 秒\n- **格式**：9:16 竖版\n- **分辨率**：1080x1920\n- **风格**：每 2.8 秒快切\n\n### 视觉元素\n- 暖色调调色（你的标志性风格）\n- 5 个关键数据文字叠加\n- 数据可视化动态图形\n- 微妙的缩放转场\n\n### 音频\n- 背景音乐：Lo-fi 节拍（免版税）\n- 旁白：AI 生成，匹配你的语气\n- 音效：转场微妙过渡音",
     },
     {
       key: "copy",
       labelKey: "resultCopy",
-      content: "Opening hook: \"You've been posting every day but your competitor barely posts and gets 10x your views...\" → Pain point → 3-part framework → CTA with urgency",
-      contentZh: "开头钩子：「你每天发内容累死累活，竞品隔三差五发一条播放量却是你的 10 倍……」→ 痛点共鸣 → 三段式框架 → 紧迫感 CTA",
-      reportContent: "## Copy & Script Report\n\n### Hook Analysis\nYour best-performing hooks use the **contrast pattern** — comparing effort vs. results.\n\n### Script Structure\n1. **Hook** (0-3s): Contrast statement\n2. **Problem** (3-10s): Why effort ≠ results\n3. **Framework** (10-45s): 3-part solution\n4. **CTA** (45-60s): Urgency + value promise\n\n### Word Choice Insights\n- \"Secret\" → +18% retention\n- \"Nobody\" → +22% engagement\n- \"Actually\" → builds trust\n\n### Estimated Performance\n- Predicted watch-through rate: 42% (your avg: 28%)\n- Predicted engagement rate: 8.5% (your avg: 4.2%)",
-      reportContentZh: "## 文案脚本报告\n\n### 钩子分析\n你表现最好的钩子使用了**对比反差法** — 对比付出与结果的落差。\n\n### 脚本结构\n1. **钩子**（0-3 秒）：反差陈述\n2. **痛点**（3-10 秒）：为什么努力 ≠ 结果\n3. **框架**（10-45 秒）：三段式解法\n4. **行动号召**（45-60 秒）：紧迫感 + 价值承诺\n\n### 用词洞察\n- 「秘密」→ 完播率 +18%\n- 「没人告诉你」→ 互动率 +22%\n- 「其实」→ 建立信任感\n\n### 预估表现\n- 预计完播率：42%（你的均值：28%）\n- 预计互动率：8.5%（你的均值：4.2%）",
-    },
-    {
-      key: "style",
-      labelKey: "resultStyle",
-      content: "Conversational + data-backed tone. Fast cuts every 3s. Text overlays on key stats. Your signature warm color grading. Background music: upbeat lo-fi.",
-      contentZh: "对话式 + 数据驱动的表达风格。每 3 秒快切。关键数据叠加文字。你标志性的暖色调调色。背景音乐：轻快 lo-fi。",
-      reportContent: "## Style Strategy Report\n\n### Your Signature Style DNA\nBased on analysis of your top 10 performing posts:\n- **Tone**: Conversational, slightly provocative\n- **Pacing**: Fast cuts every 2.8s average\n- **Visual**: Warm color grading (your signature look)\n\n### Competitor Style Gap\n| Element | You | Top Competitor | Opportunity |\n|---------|-----|---------------|-------------|\n| Cut pace | 2.8s | 2.1s | Speed up slightly |\n| Text overlays | Rare | Every key point | Add more |\n| Data visuals | None | Frequent | Big opportunity |\n\n### Recommendations\n1. Add text overlays on statistics\n2. Keep your warm color grading (distinctive)\n3. Increase cut frequency to ~2.3s\n4. Add subtle background music (lo-fi beat)",
-      reportContentZh: "## 风格策略报告\n\n### 你的标志性风格 DNA\n基于你表现最好的 10 条内容分析：\n- **语气**：对话式，略带挑衅\n- **节奏**：平均每 2.8 秒一次快切\n- **视觉**：暖色调调色（你的标志性风格）\n\n### 竞品风格差距\n| 元素 | 你 | 头部竞品 | 机会点 |\n|------|-----|---------|--------|\n| 剪辑节奏 | 2.8 秒 | 2.1 秒 | 适当加快 |\n| 文字叠加 | 很少 | 每个要点 | 增加使用 |\n| 数据可视化 | 无 | 频繁 | 大机会 |\n\n### 建议\n1. 在关键数据上叠加文字\n2. 保持你的暖色调（辨识度高）\n3. 剪辑频率提高到约 2.3 秒\n4. 添加轻快背景音乐（lo-fi 节拍）",
+      content: "Opening hook → Pain point → 3-part framework → CTA\n#短视频涨粉 #竞品分析 #内容创业 #自媒体运营 #涨粉秘籍",
+      contentZh: "开头钩子 → 痛点共鸣 → 三段式框架 → 紧迫感 CTA\n#短视频涨粉 #竞品分析 #内容创业 #自媒体运营 #涨粉秘籍",
+      reportContent: "## Copy & Hashtag Report\n\n### Script Structure\n1. **Hook** (0-3s): \"You've been posting every day but your competitor gets 10x views...\"\n2. **Problem** (3-10s): Why effort ≠ results\n3. **Framework** (10-45s): 3-part solution\n4. **CTA** (45-60s): Urgency + value promise\n\n### Hashtag Strategy\n- Primary: #短视频涨粉 (2.1B views)\n- Niche: #竞品分析 (180M views)\n- Trending: #内容创业 (890M views)\n- Long-tail: #自媒体运营 #涨粉秘籍\n\n### Estimated Performance\n- Predicted watch-through rate: 42%\n- Predicted engagement rate: 8.5%",
+      reportContentZh: "## 文案与话题报告\n\n### 脚本结构\n1. **钩子**（0-3 秒）：「你每天发内容累死累活，竞品播放量却是你的 10 倍…」\n2. **痛点**（3-10 秒）：为什么努力 ≠ 结果\n3. **框架**（10-45 秒）：三段式解法\n4. **行动号召**（45-60 秒）：紧迫感 + 价值承诺\n\n### 话题标签策略\n- 主标签：#短视频涨粉（21 亿次播放）\n- 垂直标签：#竞品分析（1.8 亿次播放）\n- 热门标签：#内容创业（8.9 亿次播放）\n- 长尾标签：#自媒体运营 #涨粉秘籍\n\n### 预估表现\n- 预计完播率：42%\n- 预计互动率：8.5%",
     },
     {
       key: "publishTime",
       labelKey: "resultPublishTime",
       content: "Best window: Tuesday 7:30 PM — 8:30 PM. Secondary: Thursday 12:00 PM. Avoid weekends for this topic category.",
       contentZh: "最佳时段：周二 19:30 — 20:30。次选：周四 12:00。此类话题建议避开周末发布。",
-      reportContent: "## Publish Time Report\n\n### Optimal Windows\n\n**Primary**: Tuesday 19:30 - 20:30\n- Your audience online peak: 87% active\n- Competition posting density: Low\n- Historical best performance day\n\n**Secondary**: Thursday 12:00 - 13:00\n- Lunch-break browsing spike\n- 72% audience active\n\n### Avoid\n- Weekends: Your niche audience engagement drops 40%\n- Monday mornings: High competition, low attention\n\n### Data Basis\n- Analyzed your last 30 posts' time-performance correlation\n- Cross-referenced with platform-wide engagement heatmaps\n- Factored in competitor posting schedules to find low-competition slots",
-      reportContentZh: "## 发布时间报告\n\n### 最优时段\n\n**首选**：周二 19:30 - 20:30\n- 你的受众在线高峰：87% 活跃\n- 竞品发布密度：低\n- 你历史上表现最好的日子\n\n**次选**：周四 12:00 - 13:00\n- 午休刷手机高峰\n- 72% 受众活跃\n\n### 避免\n- 周末：你的赛道受众互动下降 40%\n- 周一早上：竞争激烈，注意力分散\n\n### 数据依据\n- 分析了你最近 30 条内容的时间-表现相关性\n- 交叉对比了全平台互动热力图\n- 考虑了竞品发布时间表以寻找低竞争窗口",
+      reportContent: "## Publish Time Report\n\n### Optimal Windows\n\n**Primary**: Tuesday 19:30 - 20:30\n- Your audience online peak: 87% active\n- Competition posting density: Low\n\n**Secondary**: Thursday 12:00 - 13:00\n- Lunch-break browsing spike\n- 72% audience active\n\n### Avoid\n- Weekends: Your niche audience engagement drops 40%\n- Monday mornings: High competition, low attention",
+      reportContentZh: "## 发布时间报告\n\n### 最优时段\n\n**首选**：周二 19:30 - 20:30\n- 你的受众在线高峰：87% 活跃\n- 竞品发布密度：低\n\n**次选**：周四 12:00 - 13:00\n- 午休刷手机高峰\n- 72% 受众活跃\n\n### 避免\n- 周末：你的赛道受众互动下降 40%\n- 周一早上：竞争激烈，注意力分散",
     },
     {
-      key: "memory",
-      labelKey: "resultMemory",
-      content: "Applied: You prefer direct communication style (learned from 12 sessions). Your audience responds best to data-driven content (3 past successes). Avoided: tutorial format (low engagement in your history).",
-      contentZh: "已应用：你偏好直接了当的表达风格（来自 12 次对话学习）。你的受众对数据驱动型内容反应最好（3 次成功经验）。已规避：教程类格式（你的历史数据显示互动低）。",
-      reportContent: "## Memory Insights Report\n\n### Applied User Preferences\nThese insights were accumulated from observing your behavior across **12 sessions** over **3 weeks**:\n\n1. **Communication Style**: Direct and slightly provocative\n   - *Source*: Confirmed across 5 sessions, 2+ weeks\n   - *Application*: Hook uses confrontational tone\n\n2. **Content Preference**: Data-driven arguments\n   - *Source*: 3 successful posts featured statistics\n   - *Application*: Script includes specific numbers and %\n\n3. **Avoided Patterns**: Tutorial/how-to format\n   - *Source*: Your last 2 tutorials underperformed by 60%\n   - *Application*: Used story-driven structure instead\n\n### Confidence Level\n- High confidence (graduated knowledge): Communication style, data preference\n- Medium confidence (accumulating): Audience demographic assumptions\n- Excluded (stale): Old posting frequency preferences (60+ days old)",
-      reportContentZh: "## 记忆洞察报告\n\n### 已应用的用户偏好\n以下洞察来自对你 **3 周** 内 **12 次对话** 行为的观察积累：\n\n1. **表达风格**：直接，略带挑衅\n   - *来源*：跨 5 次对话、2 周以上确认\n   - *应用*：钩子采用对抗性语气\n\n2. **内容偏好**：数据驱动型论证\n   - *来源*：3 条含统计数据的内容表现优异\n   - *应用*：脚本中加入了具体数字和百分比\n\n3. **已规避的模式**：教程 / How-to 类格式\n   - *来源*：你最近 2 条教程类内容表现下降 60%\n   - *应用*：改用故事驱动结构\n\n### 置信度\n- 高置信度（已毕业知识）：表达风格、数据偏好\n- 中置信度（积累中）：受众画像假设\n- 已排除（过期）：60 天以上的发布频率偏好",
+      key: "feedback",
+      labelKey: "resultFeedback",
+      content: "",
+      contentZh: "",
+      reportContent: "",
+      reportContentZh: "",
     },
   ];
 
-  // Reference to results section for scroll
-  let resultsEl: HTMLElement | undefined = $state(undefined);
+  // Real-time feedback data (mock - simulates live updates after publish)
+  let isPublished = $state(false);
+  let feedbackLikes = $state(0);
+  let feedbackComments = $state(0);
+  let feedbackNewFollowers = $state(0);
+  let feedbackTimer: ReturnType<typeof setInterval> | null = null;
+
+  function startFeedbackTracking() {
+    isPublished = true;
+    feedbackLikes = Math.floor(Math.random() * 50) + 10;
+    feedbackComments = Math.floor(Math.random() * 8) + 2;
+    feedbackNewFollowers = Math.floor(Math.random() * 5) + 1;
+    feedbackTimer = setInterval(() => {
+      feedbackLikes += Math.floor(Math.random() * 12) + 1;
+      feedbackComments += Math.random() > 0.6 ? Math.floor(Math.random() * 3) + 1 : 0;
+      feedbackNewFollowers += Math.random() > 0.75 ? 1 : 0;
+    }, 3000);
+  }
+
+  // For existing works, simulate already-published state
+  function initExistingFeedback() {
+    isPublished = true;
+    feedbackLikes = Math.floor(Math.random() * 5000) + 500;
+    feedbackComments = Math.floor(Math.random() * 300) + 30;
+    feedbackNewFollowers = Math.floor(Math.random() * 200) + 20;
+    feedbackTimer = setInterval(() => {
+      feedbackLikes += Math.floor(Math.random() * 12) + 1;
+      feedbackComments += Math.random() > 0.6 ? Math.floor(Math.random() * 3) + 1 : 0;
+      feedbackNewFollowers += Math.random() > 0.75 ? 1 : 0;
+    }, 3000);
+  }
+
+  // Reference to results title for scroll
+  let resultsTitleEl: HTMLElement | undefined = $state(undefined);
+  let stepCardEls: HTMLElement[] = $state([]);
 
   function initExistingWork() {
     stepStatuses = steps.map(() => "complete");
     currentStep = steps.length;
     hasEverCompleted = true;
     hasChanges = false;
+    if (workStatus === "published") {
+      initExistingFeedback();
+    }
   }
 
   // Pipeline controls
@@ -213,15 +263,51 @@
     hasEverCompleted = true;
     hasChanges = false;
 
-    // Auto-scroll to results
+    // Auto-scroll to results title as first visible line
     await tick();
     setTimeout(() => {
-      resultsEl?.scrollIntoView({ behavior: "smooth", block: "start" });
+      resultsTitleEl?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 200);
   }
 
+  async function rerunVideoStep() {
+    const stepIndex = 4; // step 5 = index 4
+    isRunning = true;
+    stepStatuses[stepIndex] = "running";
+    stepStatuses = [...stepStatuses];
+    currentStep = stepIndex;
+
+    // Scroll to step 5 card
+    await tick();
+    stepCardEls[stepIndex]?.scrollIntoView({ behavior: "smooth", block: "center" });
+
+    await new Promise<void>((resolve) => {
+      const duration = 2000 + Math.random() * 2000;
+      setTimeout(resolve, duration);
+    });
+
+    stepStatuses[stepIndex] = "complete";
+    stepStatuses = [...stepStatuses];
+    isRunning = false;
+    currentStep = steps.length;
+
+    // Then scroll to results
+    await tick();
+    setTimeout(() => {
+      resultsTitleEl?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 400);
+  }
+
   function handleStart() {
-    if (isPaused) {
+    if (isPaused && hasChanges) {
+      // Changes made while paused → restart from beginning
+      isPaused = false;
+      shouldStop = false;
+      stepStatuses = steps.map(() => "pending");
+      currentStep = -1;
+      activeReportKey = null;
+      runPipeline();
+    } else if (isPaused) {
       isPaused = false;
       shouldStop = false;
       runPipeline();
@@ -248,6 +334,10 @@
     loadSavedDirections();
     if (!isNewWork) initExistingWork();
     return () => unsub();
+  });
+
+  onDestroy(() => {
+    if (feedbackTimer) clearInterval(feedbackTimer);
   });
 </script>
 
@@ -292,20 +382,54 @@
           </button>
         {:else}
           <button class="start-btn" onclick={handleStart}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <polygon points="5 3 19 12 5 21 5 3"/>
-            </svg>
-            {#if isPaused}{tt("resumeWork")}{:else}{tt("startWork")}{/if}
+            {#if isPaused && hasChanges}
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+              </svg>
+              {tt("regenerate")}
+            {:else if isPaused}
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+              </svg>
+              {tt("resumeWork")}
+            {:else}
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+              </svg>
+              {tt("startGenerate")}
+            {/if}
           </button>
         {/if}
       </div>
+    </div>
+
+    <!-- Appearance Toggle -->
+    <div class="appearance-toggle">
+      <button class="appearance-option" class:active={wantAppearance} onclick={() => { wantAppearance = true; markChanged(); }}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+        </svg>
+        <div class="appearance-text">
+          <span class="appearance-label">{tt("appearOnCamera")}</span>
+          <span class="appearance-hint">{tt("appearanceHint")}</span>
+        </div>
+      </button>
+      <button class="appearance-option" class:active={!wantAppearance} onclick={() => { wantAppearance = false; markChanged(); }}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="7" width="20" height="15" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/>
+        </svg>
+        <div class="appearance-text">
+          <span class="appearance-label">{tt("noAppearance")}</span>
+          <span class="appearance-hint">{tt("noAppearanceHint")}</span>
+        </div>
+      </button>
     </div>
 
     <!-- Full Steps List -->
     <div class="steps-list">
       {#each steps as step, i}
         {@const status = stepStatuses[i]}
-        <div class="step-card" class:running={status === "running"} class:complete={status === "complete"}>
+        <div class="step-card" class:running={status === "running"} class:complete={status === "complete"} bind:this={stepCardEls[i]}>
           <div class="step-left">
             <div class="step-number" class:active={status === "running"} class:done={status === "complete"}>
               {#if status === "complete"}
@@ -328,14 +452,33 @@
               </div>
               <div class="step-status-area">
                 {#if step.id === 3}
-                  <button class="competitor-btn" onclick={() => showCompetitorPanel = !showCompetitorPanel}>{tt("addCompetitors")}</button>
+                  <button class="competitor-btn" onclick={() => showCompetitorPanel = !showCompetitorPanel}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                    {tt("addCompetitors")}</button>
                   {#if competitorUrls.length === 0 && !showCompetitorPanel}
                     <span class="ai-tag">{tt("aiAutoAnalysis")}</span>
+                  {:else if competitorUrls.length > 0 && !showCompetitorPanel}
+                    {#each competitorUrls as url}
+                      <span class="competitor-id-tag">{url.replace(/^https?:\/\/(www\.)?/, '').split('/').filter(Boolean).pop() || url}</span>
+                    {/each}
                   {/if}
+                {:else if step.id === 5}
+                  <button class="direction-btn" onclick={() => showDirectionPanel = showDirectionPanel === i ? null : i} title={tt("uploadAssets")}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    {#if uploadedFileName}
+                      <span class="direction-btn-text">{uploadedFileName}</span>
+                    {:else}
+                      {tt("uploadAssets")}
+                    {/if}
+                  </button>
                 {:else}
-                  <button class="direction-btn" onclick={() => showDirectionPanel = showDirectionPanel === i ? null : i} title={tt("customDirection")}>
+                  <button class="direction-btn" class:has-content={stepDirections[i]?.trim()} onclick={() => showDirectionPanel = showDirectionPanel === i ? null : i} title={stepDirections[i]?.trim() || tt("customDirection")}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                    {tt("customDirection")}
+                    {#if stepDirections[i]?.trim()}
+                      <span class="direction-btn-text">{stepDirections[i]}</span>
+                    {:else}
+                      {tt("customDirection")}
+                    {/if}
                   </button>
                 {/if}
                 <span class="step-badge" class:badge-running={status === "running"} class:badge-complete={status === "complete"} class:badge-paused={status === "paused"}>
@@ -343,8 +486,21 @@
                 </span>
               </div>
             </div>
-            <!-- Custom direction panel -->
-            {#if showDirectionPanel === i && step.id !== 3}
+            <!-- Custom direction / upload panel -->
+            {#if showDirectionPanel === i && step.id === 5}
+              <div class="direction-panel">
+                <label class="file-upload-area">
+                  <input type="file" accept="video/*,image/*" onchange={(e) => { const f = (e.target as HTMLInputElement).files?.[0]; if (f) { uploadedFileName = f.name; markChanged(); showDirectionPanel = null; } }} hidden />
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                  </svg>
+                  <span>{lang === "zh" ? "点击或拖拽上传视频/图片素材" : "Click or drag to upload video/image assets"}</span>
+                  {#if uploadedFileName}
+                    <span class="uploaded-name">{uploadedFileName}</span>
+                  {/if}
+                </label>
+              </div>
+            {:else if showDirectionPanel === i && step.id !== 3}
               <div class="direction-panel">
                 <textarea
                   class="direction-input"
@@ -353,6 +509,9 @@
                   placeholder={tt("customDirectionPlaceholder")}
                   rows="2"
                 ></textarea>
+                {#if stepDirections[i]?.trim()}
+                  <button class="direction-save-btn" onclick={() => handleSaveDirection(i)}>{tt("saveDirection")}</button>
+                {/if}
               </div>
             {/if}
             {#if step.id === 3 && showCompetitorPanel}
@@ -464,22 +623,57 @@
                   </div>
                   <div class="step-status-area">
                     {#if step.id === 3}
-                      <button class="competitor-btn" onclick={() => showCompetitorPanel = !showCompetitorPanel}>{tt("addCompetitors")}</button>
+                      <button class="competitor-btn" onclick={() => showCompetitorPanel = !showCompetitorPanel}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                    {tt("addCompetitors")}</button>
                       {#if competitorUrls.length === 0 && !showCompetitorPanel}
                         <span class="ai-tag">{tt("aiAutoAnalysis")}</span>
+                      {:else if competitorUrls.length > 0 && !showCompetitorPanel}
+                        {#each competitorUrls as url}
+                          <span class="competitor-id-tag">{url.replace(/^https?:\/\/(www\.)?/, '').split('/').filter(Boolean).pop() || url}</span>
+                        {/each}
                       {/if}
+                    {:else if step.id === 5}
+                      <button class="direction-btn" onclick={() => showDirectionPanel = showDirectionPanel === i ? null : i} title={tt("uploadAssets")}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        {#if uploadedFileName}
+                          <span class="direction-btn-text">{uploadedFileName}</span>
+                        {:else}
+                          {tt("uploadAssets")}
+                        {/if}
+                      </button>
                     {:else}
-                      <button class="direction-btn" onclick={() => showDirectionPanel = showDirectionPanel === i ? null : i} title={tt("customDirection")}>
+                      <button class="direction-btn" class:has-content={stepDirections[i]?.trim()} onclick={() => showDirectionPanel = showDirectionPanel === i ? null : i} title={stepDirections[i]?.trim() || tt("customDirection")}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                        {tt("customDirection")}
+                        {#if stepDirections[i]?.trim()}
+                          <span class="direction-btn-text">{stepDirections[i]}</span>
+                        {:else}
+                          {tt("customDirection")}
+                        {/if}
                       </button>
                     {/if}
                     <span class="step-badge badge-complete">{tt("stepComplete")}</span>
                   </div>
                 </div>
-                {#if showDirectionPanel === i && step.id !== 3}
+                {#if showDirectionPanel === i && step.id === 5}
+                  <div class="direction-panel">
+                    <label class="file-upload-area">
+                      <input type="file" accept="video/*,image/*" onchange={(e) => { const f = (e.target as HTMLInputElement).files?.[0]; if (f) { uploadedFileName = f.name; markChanged(); showDirectionPanel = null; } }} hidden />
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                      </svg>
+                      <span>{lang === "zh" ? "点击或拖拽上传视频/图片素材" : "Click or drag to upload video/image assets"}</span>
+                      {#if uploadedFileName}
+                        <span class="uploaded-name">{uploadedFileName}</span>
+                      {/if}
+                    </label>
+                  </div>
+                {:else if showDirectionPanel === i && step.id !== 3}
                   <div class="direction-panel">
                     <textarea class="direction-input" bind:value={stepDirections[i]} oninput={markChanged} placeholder={tt("customDirectionPlaceholder")} rows="2"></textarea>
+                    {#if stepDirections[i]?.trim()}
+                      <button class="direction-save-btn" onclick={() => handleSaveDirection(i)}>{tt("saveDirection")}</button>
+                    {/if}
                   </div>
                 {/if}
                 {#if step.id === 3 && showCompetitorPanel}
@@ -516,69 +710,243 @@
     </div>
   {/if}
 
-  <!-- ═══════════ STRATEGY RESULTS ═══════════ -->
+  <!-- ═══════════ FINISHED PRODUCT ═══════════ -->
   {#if allDone}
-    <div class="results-section" bind:this={resultsEl}>
-      <h3 class="results-title">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
-        </svg>
-        {tt("strategyResults")}
-      </h3>
+    <div class="results-section">
+      <div class="results-title-row" bind:this={resultsTitleEl}>
+        <h3 class="results-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+          {tt("strategyResults")}
+        </h3>
+        {#if !isPublished}
+          <button class="publish-btn-sm" onclick={startFeedbackTracking}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+            {tt("oneClickPublish")}
+          </button>
+        {/if}
+      </div>
       <div class="results-layout">
+        <!-- Left: deliverable cards -->
         <div class="results-left">
           {#each mockDeliverables as item}
-            <div class="deliverable-card" class:active-card={activeReportKey === item.key}>
-              <div class="deliverable-header">
-                <span class="deliverable-label">{tt(item.labelKey)}</span>
-                {#if item.key === "memory"}
-                  <span class="memory-hint">{tt("resultMemoryHint")}</span>
-                {/if}
-              </div>
-              <p class="deliverable-content">{lang === "zh" ? item.contentZh : item.content}</p>
-              <button class="view-report-btn" onclick={() => activeReportKey = activeReportKey === item.key ? null : item.key}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
-                </svg>
-                {activeReportKey === item.key ? tt("closeReport") : tt("viewReport")}
-              </button>
-            </div>
-          {/each}
-        </div>
-        <div class="results-right">
-          <div class="report-preview-header">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
-            </svg>
-            <span>{tt("reportPreview")}</span>
-          </div>
-          <div class="report-preview-body">
-            {#if activeReportKey}
-              {@const report = mockDeliverables.find(d => d.key === activeReportKey)}
-              {#if report}
-                <div class="markdown-body">
-                  {@html (lang === "zh" ? report.reportContentZh : report.reportContent)
-                    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-                    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-                    .replace(/^\| (.+)$/gm, (m) => `<code>${m}</code>`)
-                    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-                    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-                    .replace(/^- (.+)$/gm, '<li>$1</li>')
-                    .replace(/^(\d+)\. (.+)$/gm, '<li><strong>$1.</strong> $2</li>')
-                    .replace(/\n\n/g, '<br><br>')
-                    .replace(/\n/g, '<br>')
-                  }
+            {#if item.key === "preview"}
+              <!-- Special: Video Preview card with player + publish -->
+              <div class="deliverable-card preview-card" class:active-card={activeReportKey === item.key}>
+                <div class="deliverable-header">
+                  <span class="deliverable-label">{tt(item.labelKey)}</span>
+                  {#if wantAppearance && !userFootageUploaded && !isPublished}
+                    <span class="footage-tag missing">{tt("missingUserFootage")}</span>
+                  {:else if isPublished}
+                    <span class="live-indicator"><span class="live-dot"></span>{tt("liveTracking")}</span>
+                  {:else}
+                    <span class="footage-tag ready">{tt("publishReady")}</span>
+                  {/if}
                 </div>
-              {/if}
+                <div class="video-player-mock">
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="5 3 19 12 5 21 5 3"/>
+                  </svg>
+                </div>
+                <p class="deliverable-content">{lang === "zh" ? item.contentZh : item.content}</p>
+                {#if wantAppearance && !userFootageUploaded && !isPublished}
+                  <div class="footage-actions">
+                    <button class="upload-btn" onclick={() => { userFootageUploaded = true; }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                      </svg>
+                      {tt("uploadFootage")}
+                    </button>
+                    <button class="no-appear-btn" onclick={() => { wantAppearance = false; userFootageUploaded = false; rerunVideoStep(); }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+                      </svg>
+                      {tt("dontWantAppear")}
+                    </button>
+                  </div>
+                {:else if !isPublished}
+                  <button class="upload-btn-secondary" onclick={() => {}}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    {tt("uploadFootageOptional")}
+                  </button>
+                {/if}
+                <button class="view-report-btn" onclick={() => activeReportKey = activeReportKey === item.key ? null : item.key}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                  </svg>
+                  {activeReportKey === item.key ? tt("closeReport") : tt("viewReport")}
+                </button>
+              </div>
+            {:else if item.key === "feedback"}
+              <!-- Special: Feedback card with real-time metrics -->
+              <div class="deliverable-card feedback-card" class:active-card={activeReportKey === item.key}>
+                <div class="deliverable-header">
+                  <span class="deliverable-label">{tt(item.labelKey)}</span>
+                  {#if isPublished}
+                    <span class="live-indicator"><span class="live-dot"></span>{tt("liveTracking")}</span>
+                  {:else}
+                    <span class="memory-hint">{tt("resultFeedbackHint")}</span>
+                  {/if}
+                </div>
+                {#if isPublished}
+                  <div class="feedback-metrics">
+                    <div class="metric-item">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                      </svg>
+                      <div class="metric-data">
+                        <span class="metric-value">{feedbackLikes.toLocaleString()}</span>
+                        <span class="metric-label">{tt("likesCount")}</span>
+                      </div>
+                    </div>
+                    <div class="metric-item">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                      </svg>
+                      <div class="metric-data">
+                        <span class="metric-value">{feedbackComments.toLocaleString()}</span>
+                        <span class="metric-label">{tt("commentsCount")}</span>
+                      </div>
+                    </div>
+                    <div class="metric-item">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/>
+                      </svg>
+                      <div class="metric-data">
+                        <span class="metric-value">+{feedbackNewFollowers.toLocaleString()}</span>
+                        <span class="metric-label">{tt("newFollowers")}</span>
+                      </div>
+                    </div>
+                  </div>
+                {:else}
+                  <p class="deliverable-content feedback-placeholder-text">{tt("noFeedbackYet")}</p>
+                {/if}
+                <button class="view-report-btn" onclick={() => activeReportKey = activeReportKey === item.key ? null : item.key}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                  </svg>
+                  {activeReportKey === item.key ? tt("closeReport") : tt("viewReport")}
+                </button>
+              </div>
             {:else}
-              <div class="report-placeholder">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
-                </svg>
-                <p>{tt("selectReportHint")}</p>
+              <!-- Standard deliverable card -->
+              <div class="deliverable-card" class:active-card={activeReportKey === item.key}>
+                <div class="deliverable-header">
+                  <span class="deliverable-label">{tt(item.labelKey)}</span>
+                </div>
+                <p class="deliverable-content">{lang === "zh" ? item.contentZh : item.content}</p>
+                <button class="view-report-btn" onclick={() => activeReportKey = activeReportKey === item.key ? null : item.key}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                  </svg>
+                  {activeReportKey === item.key ? tt("closeReport") : tt("viewReport")}
+                </button>
               </div>
             {/if}
-          </div>
+          {/each}
+        </div>
+
+        <!-- Right panel: Script requirements (if appearance) or Report preview -->
+        <div class="results-right">
+          {#if wantAppearance && !userFootageUploaded && !isPublished}
+            <div class="report-preview-header">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M15.6 11.6a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7c0-1.1.9-2 2-2h3l2-3h6l2 3h3a2 2 0 0 1 2 2z"/>
+              </svg>
+              <span>{tt("scriptRequirements")}</span>
+            </div>
+            <div class="report-preview-body">
+              <div class="markdown-body script-requirements">
+                <h3>{tt("shotList")}</h3>
+                <div class="shot-item">
+                  <span class="shot-number">Shot 1</span>
+                  <span class="shot-desc">{lang === "zh" ? "面对镜头，自然微笑，说：「你每天发内容累死累活...」" : "Face camera, natural smile, say: \"You've been posting every day...\""}</span>
+                  <span class="shot-detail">{lang === "zh" ? "半身镜头 / 自然光 / 3秒" : "Medium shot / Natural light / 3s"}</span>
+                </div>
+                <div class="shot-item">
+                  <span class="shot-number">Shot 2</span>
+                  <span class="shot-desc">{lang === "zh" ? "略带惊讶表情，说：「但你的竞品隔三差五发一条...」" : "Slightly surprised expression, say: \"But your competitor barely posts...\""}</span>
+                  <span class="shot-detail">{lang === "zh" ? "特写镜头 / 柔和侧光 / 5秒" : "Close-up / Soft side light / 5s"}</span>
+                </div>
+                <div class="shot-item">
+                  <span class="shot-number">Shot 3</span>
+                  <span class="shot-desc">{lang === "zh" ? "竖起三根手指，说：「今天我告诉你三个秘密...」" : "Hold up three fingers, say: \"Today I'll tell you three secrets...\""}</span>
+                  <span class="shot-detail">{lang === "zh" ? "半身镜头 / 背景虚化 / 4秒" : "Medium shot / Blurred background / 4s"}</span>
+                </div>
+              </div>
+            </div>
+          {:else if activeReportKey === "feedback" && isPublished}
+            <div class="report-preview-header">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
+              </svg>
+              <span>{tt("performanceReview")}</span>
+              <span class="live-indicator" style="margin-left: auto;"><span class="live-dot"></span>{tt("liveTracking")}</span>
+            </div>
+            <div class="report-preview-body">
+              <div class="markdown-body">
+                <h2>{lang === "zh" ? "实时数据面板" : "Live Performance Dashboard"}</h2>
+                <div class="feedback-metrics-large">
+                  <div class="metric-card">
+                    <span class="metric-card-value">{feedbackLikes.toLocaleString()}</span>
+                    <span class="metric-card-label">{tt("likesCount")}</span>
+                  </div>
+                  <div class="metric-card">
+                    <span class="metric-card-value">{feedbackComments.toLocaleString()}</span>
+                    <span class="metric-card-label">{tt("commentsCount")}</span>
+                  </div>
+                  <div class="metric-card">
+                    <span class="metric-card-value">+{feedbackNewFollowers.toLocaleString()}</span>
+                    <span class="metric-card-label">{tt("newFollowers")}</span>
+                  </div>
+                </div>
+                <br>
+                <h3>{lang === "zh" ? "趋势分析" : "Trend Analysis"}</h3>
+                <li>{lang === "zh" ? "互动率高于同类作品平均值 **2.3 倍**" : "Engagement rate **2.3x** above category average"}</li>
+                <li>{lang === "zh" ? "前 30 分钟涨粉速度正常" : "First 30 min follower growth on track"}</li>
+                <li>{lang === "zh" ? "评论情感倾向：正面 85%、中性 12%、负面 3%" : "Comment sentiment: 85% positive, 12% neutral, 3% negative"}</li>
+              </div>
+            </div>
+          {:else}
+            <div class="report-preview-header">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+              </svg>
+              <span>{tt("reportPreview")}</span>
+            </div>
+            <div class="report-preview-body">
+              {#if activeReportKey}
+                {@const report = mockDeliverables.find(d => d.key === activeReportKey)}
+                {#if report && (lang === "zh" ? report.reportContentZh : report.reportContent)}
+                  <div class="markdown-body">
+                    {@html (lang === "zh" ? report.reportContentZh : report.reportContent)
+                      .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+                      .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+                      .replace(/^\| (.+)$/gm, (m: string) => `<code>${m}</code>`)
+                      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+                      .replace(/^- (.+)$/gm, '<li>$1</li>')
+                      .replace(/^(\d+)\. (.+)$/gm, '<li><strong>$1.</strong> $2</li>')
+                      .replace(/\n\n/g, '<br><br>')
+                      .replace(/\n/g, '<br>')
+                    }
+                  </div>
+                {/if}
+              {:else}
+                <div class="report-placeholder">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                  </svg>
+                  <p>{tt("selectReportHint")}</p>
+                </div>
+              {/if}
+            </div>
+          {/if}
         </div>
       </div>
     </div>
@@ -588,6 +956,7 @@
 <style>
   .pipeline-view { display: flex; flex-direction: column; gap: 1.5rem; }
 
+  .detail-header { position: sticky; top: 4.5rem; z-index: 50; background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: blur(16px) saturate(180%); -webkit-backdrop-filter: blur(16px) saturate(180%); padding: 0.6rem 0; margin: -0.5rem 0 0.5rem; }
   .back-btn { display: flex; align-items: center; gap: 0.4rem; background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.85rem; font-weight: 550; padding: 0.4rem 0; transition: color var(--transition-fast); }
   .back-btn:hover { color: var(--accent); }
 
@@ -613,7 +982,7 @@
   .steps-list, .expanded-steps { display: flex; flex-direction: column; }
   .expanded-steps { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); animation: slideDown 0.25s ease; }
 
-  .step-card { display: flex; gap: 1rem; transition: all 0.2s ease; }
+  .step-card { display: flex; gap: 1rem; transition: all 0.2s ease; scroll-margin-top: 6rem; }
   .step-left { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; width: 36px; }
 
   .step-number { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border: 2px solid var(--border); color: var(--text-dim); font-size: 0.82rem; font-weight: 600; flex-shrink: 0; transition: all 0.3s ease; }
@@ -646,13 +1015,24 @@
   .direction-btn { display: flex; align-items: center; gap: 0.3rem; font-size: 0.72rem; font-weight: 550; color: var(--text-muted); background: none; border: 1px solid var(--border); padding: 0.2rem 0.55rem; border-radius: 6px; cursor: pointer; transition: all 0.15s ease; white-space: nowrap; }
   .direction-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 
-  .direction-panel { margin-top: 0.5rem; animation: slideDown 0.2s ease; }
+  .direction-panel { margin-top: 0.5rem; animation: slideDown 0.2s ease; display: flex; flex-direction: column; }
   .direction-input { width: 100%; background: var(--bg-inset); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem 0.75rem; font-size: 0.82rem; font-family: inherit; resize: vertical; min-height: 48px; transition: border-color 0.2s; line-height: 1.5; }
   .direction-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .direction-btn-text { max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: middle; }
+  .direction-btn.has-content { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+
+  .file-upload-area { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.5rem; padding: 1.5rem; border: 2px dashed var(--border); border-radius: 10px; cursor: pointer; color: var(--text-muted); transition: all 0.2s; text-align: center; }
+  .file-upload-area:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  .file-upload-area span { font-size: 0.78rem; }
+  .uploaded-name { font-size: 0.75rem; font-weight: 600; color: var(--success); word-break: break-all; }
+
   .direction-input::placeholder { color: var(--text-dim); }
 
+  .direction-save-btn { align-self: flex-end; margin-top: 0.4rem; background: var(--accent); color: var(--accent-text); border: none; padding: 0.35rem 1rem; border-radius: 8px; font-weight: 600; font-size: 0.78rem; cursor: pointer; transition: all 0.15s; }
+  .direction-save-btn:hover { background: var(--accent-hover); }
+
   /* ── Competitor ──────────────────────────────────────────────────── */
-  .competitor-btn { font-size: 0.75rem; font-weight: 550; color: var(--accent); background: none; border: 1px solid var(--accent); padding: 0.2rem 0.6rem; border-radius: 6px; cursor: pointer; transition: all 0.15s ease; white-space: nowrap; }
+  .competitor-btn { display: flex; align-items: center; gap: 0.3rem; font-size: 0.75rem; font-weight: 550; color: var(--accent); background: none; border: 1px solid var(--accent); padding: 0.2rem 0.6rem; border-radius: 6px; cursor: pointer; transition: all 0.15s ease; white-space: nowrap; }
   .competitor-btn:hover { background: var(--accent-soft); }
 
   .ai-tag { font-size: 0.68rem; font-weight: 500; color: var(--info); background: var(--info-soft); padding: 0.2rem 0.55rem; border-radius: 9999px; white-space: nowrap; }
@@ -672,6 +1052,20 @@
   .url-text { font-size: 0.78rem; color: var(--text-secondary); font-family: "SF Mono", "Fira Code", monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
   .url-remove { background: none; border: none; color: var(--text-dim); cursor: pointer; padding: 0.15rem; border-radius: 4px; display: flex; align-items: center; justify-content: center; transition: all 0.15s; flex-shrink: 0; }
   .url-remove:hover { color: var(--error); background: var(--error-soft); }
+
+  /* ── Appearance toggle ────────────────────────────────────────── */
+  .appearance-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+  .appearance-option { display: flex; align-items: flex-start; gap: 0.75rem; background: var(--card-bg); border: 2px solid var(--card-border); border-radius: var(--card-radius); padding: 1rem 1.125rem; cursor: pointer; transition: all 0.2s ease; text-align: left; backdrop-filter: var(--card-blur); }
+  .appearance-option:hover { border-color: var(--text-dim); }
+  .appearance-option.active { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px rgba(134, 120, 191, 0.2); }
+  .appearance-option svg { flex-shrink: 0; margin-top: 0.1rem; color: var(--text-dim); transition: color 0.2s; }
+  .appearance-option.active svg { color: var(--accent); }
+  .appearance-text { display: flex; flex-direction: column; gap: 0.2rem; }
+  .appearance-label { font-size: 0.88rem; font-weight: 650; color: var(--text); }
+  .appearance-hint { font-size: 0.72rem; color: var(--text-muted); line-height: 1.45; }
+
+  /* ── Competitor ID tags ─────────────────────────────────────── */
+  .competitor-id-tag { font-size: 0.68rem; font-weight: 550; color: var(--accent); background: var(--accent-soft); padding: 0.15rem 0.5rem; border-radius: 9999px; white-space: nowrap; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
 
   .step-output { margin-top: 0.5rem; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.65rem 0.875rem; animation: fadeIn 0.2s ease; }
   .typing-indicator { display: flex; gap: 4px; padding: 0.15rem 0; }
@@ -712,8 +1106,11 @@
 
   /* ── Strategy Results ──────────────────────────────────────────── */
   .results-section { margin-top: 0.25rem; animation: fadeIn 0.3s ease; min-height: 100vh; }
-  .results-title { display: flex; align-items: center; gap: 0.5rem; font-size: 1rem; font-weight: 650; margin-bottom: 1rem; letter-spacing: -0.01em; }
+  .results-title-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; scroll-margin-top: 8rem; }
+  .results-title { display: flex; align-items: center; gap: 0.5rem; font-size: 1rem; font-weight: 650; letter-spacing: -0.01em; }
   .results-title svg { color: var(--success); }
+  .publish-btn-sm { display: flex; align-items: center; gap: 0.4rem; background: linear-gradient(135deg, #10b981, #059669); color: #fff; border: none; padding: 0.5rem 1.2rem; border-radius: 10px; font-weight: 650; cursor: pointer; font-size: 0.82rem; transition: all 0.2s; box-shadow: 0 4px 14px rgba(16,185,129,0.3); white-space: nowrap; flex-shrink: 0; }
+  .publish-btn-sm:hover { box-shadow: 0 6px 22px rgba(16,185,129,0.4); transform: translateY(-1px); filter: brightness(1.1); }
 
   .results-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; min-height: calc(100vh - 6rem); }
   @media (max-width: 768px) { .results-layout { grid-template-columns: 1fr; } }
@@ -745,6 +1142,49 @@
   :global(.report-preview-body .markdown-body em) { color: var(--text-muted); }
   :global(.report-preview-body .markdown-body li) { margin-bottom: 0.25rem; padding-left: 0.25rem; }
   :global(.report-preview-body .markdown-body code) { font-family: "SF Mono", "Fira Code", monospace; font-size: 0.78rem; background: var(--bg-inset); padding: 0.15em 0.4em; border-radius: 4px; color: var(--text-muted); display: block; margin: 0.3rem 0; overflow-x: auto; }
+
+  /* ── Video preview & publish ──────────────────────────────────── */
+  .video-preview-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--card-radius); padding: 1rem 1.125rem; display: flex; flex-direction: column; gap: 0.75rem; box-shadow: var(--shadow-sm); backdrop-filter: var(--card-blur); }
+  .video-player-mock { aspect-ratio: 16/9; background: var(--bg-inset); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--text-dim); border: 1px solid var(--border); }
+  .footage-tag { font-size: 0.72rem; font-weight: 600; padding: 0.25rem 0.7rem; border-radius: 9999px; }
+  .footage-tag.missing { background: rgba(239, 68, 68, 0.12); color: #ef4444; }
+  .footage-tag.ready { background: var(--success-soft); color: var(--success); }
+  .footage-actions { display: flex; gap: 0.5rem; }
+  .upload-btn { display: flex; align-items: center; gap: 0.4rem; background: var(--accent-gradient); color: var(--accent-text); border: none; padding: 0.6rem 1.25rem; border-radius: 10px; font-weight: 600; cursor: pointer; font-size: 0.82rem; transition: all 0.2s; box-shadow: 0 4px 14px rgba(134,120,191,0.3); }
+  .upload-btn:hover { box-shadow: 0 6px 22px rgba(134,120,191,0.4); transform: translateY(-1px); }
+  .no-appear-btn { display: flex; align-items: center; gap: 0.4rem; background: var(--card-bg); color: var(--text-muted); border: 1px solid var(--border); padding: 0.6rem 1.25rem; border-radius: 10px; font-weight: 600; cursor: pointer; font-size: 0.82rem; transition: all 0.2s; }
+  .upload-btn-secondary { display: flex; align-items: center; gap: 0.35rem; background: none; color: var(--text-muted); border: 1px dashed var(--border); padding: 0.45rem 1rem; border-radius: 8px; font-weight: 550; cursor: pointer; font-size: 0.78rem; transition: all 0.15s; align-self: flex-start; }
+  .upload-btn-secondary:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+  .no-appear-btn:hover { color: var(--text); border-color: var(--text-dim); background: var(--bg-hover); }
+  .publish-btn { display: flex; align-items: center; gap: 0.5rem; width: 100%; justify-content: center; background: linear-gradient(135deg, #10b981, #059669); color: #fff; border: none; padding: 0.75rem 1.5rem; border-radius: 12px; font-weight: 650; cursor: pointer; font-size: 0.92rem; transition: all 0.2s; box-shadow: 0 4px 14px rgba(16,185,129,0.3); }
+  .publish-btn:hover { box-shadow: 0 6px 22px rgba(16,185,129,0.4); transform: translateY(-1px); filter: brightness(1.1); }
+
+  /* ── Shot list items ────────────────────────────────────────── */
+  .script-requirements { padding: 0.5rem 0; }
+  .shot-item { display: flex; flex-direction: column; gap: 0.2rem; padding: 0.75rem; margin-bottom: 0.5rem; background: var(--bg-inset); border: 1px solid var(--border); border-radius: 8px; }
+  .shot-number { font-size: 0.72rem; font-weight: 650; color: var(--accent); text-transform: uppercase; letter-spacing: 0.04em; }
+  .shot-desc { font-size: 0.82rem; color: var(--text); line-height: 1.5; }
+  .shot-detail { font-size: 0.72rem; color: var(--text-dim); font-style: italic; }
+
+  /* ── Live indicator ──────────────────────────────────────────── */
+  .live-indicator { display: flex; align-items: center; gap: 0.35rem; font-size: 0.68rem; font-weight: 600; color: var(--success); }
+  .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); display: inline-block; animation: live-blink 1.5s ease-in-out infinite; }
+  @keyframes live-blink { 0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.4); } 50% { opacity: 0.4; box-shadow: 0 0 8px 3px rgba(52, 211, 153, 0.2); } }
+
+  /* ── Feedback metrics ──────────────────────────────────────── */
+  .feedback-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; }
+  .metric-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.6rem 0.75rem; background: var(--bg-inset); border: 1px solid var(--border); border-radius: 10px; }
+  .metric-item svg { color: var(--accent); flex-shrink: 0; }
+  .metric-data { display: flex; flex-direction: column; }
+  .metric-value { font-size: 1.1rem; font-weight: 700; letter-spacing: -0.02em; color: var(--text); }
+  .metric-label { font-size: 0.68rem; color: var(--text-muted); font-weight: 500; }
+  .feedback-placeholder-text { color: var(--text-dim); font-style: italic; }
+
+  /* ── Large metric cards (report panel) ─────────────────────── */
+  .feedback-metrics-large { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin-top: 0.5rem; }
+  .metric-card { background: var(--bg-inset); border: 1px solid var(--border); border-radius: 12px; padding: 1rem; display: flex; flex-direction: column; align-items: center; gap: 0.25rem; }
+  .metric-card-value { font-size: 1.5rem; font-weight: 750; letter-spacing: -0.03em; color: var(--text); }
+  .metric-card-label { font-size: 0.72rem; color: var(--text-muted); font-weight: 550; }
 
   /* ── Animations ─────────────────────────────────────────────────── */
   .spin { animation: spin 1s linear infinite; }
