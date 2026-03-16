@@ -8,56 +8,58 @@
   function tt(key: string): string { void lang; return t(key); }
   let insightsEl: HTMLElement | undefined = $state(undefined);
 
-  // Mock user profile
-  const profile = {
-    avatar: "https://api.dicebear.com/7.x/adventurer/svg?seed=AutoViral",
-    username: "@alex_creates",
-    ttFollowers: "342K",
-    todayLikes: "2,847",
-    todayComments: "436",
-  };
+  // ── Real data state ──
+  let totalWorks = $state(0);
+  let totalViews = $state(0);
+  let totalLikes = $state(0);
+  let totalComments = $state(0);
 
-  // Style keywords
-  const styleKeywords = [
-    { text: "High-aesthetic sports blogger", textZh: "高颜值路线的运动博主" },
-    { text: "Data-driven storytelling", textZh: "数据驱动型叙事" },
-    { text: "Fast-paced editing", textZh: "快节奏剪辑风格" },
-    { text: "Warm color grading", textZh: "暖色调调色" },
-    { text: "Conversational tone", textZh: "对话式表达" },
-  ];
+  let styleProfile: string[] = $state([]);
+  let insights: { content: string; summary?: string; memory_type?: string; relevance?: number }[] = $state([]);
+  let loading = $state(true);
 
-  // Fan demographics
-  const ageData = [
-    { range: "13-17", pct: 8 },
-    { range: "18-24", pct: 35 },
-    { range: "25-34", pct: 32 },
-    { range: "35-44", pct: 15 },
-    { range: "45+", pct: 10 },
-  ];
+  // ── Fetch analytics + profile + insights ──
+  async function fetchData() {
+    loading = true;
+    try {
+      const [analyticsRes, profileRes, insightsRes] = await Promise.all([
+        fetch("/api/analytics"),
+        fetch("/api/memory/profile"),
+        fetch("/api/memory/search?q=platform%20insights&method=hybrid&topK=7"),
+      ]);
 
-  const genderData = { male: 62, female: 38 };
+      if (analyticsRes.ok) {
+        const data = await analyticsRes.json();
+        totalWorks = data.totalWorks ?? 0;
+        totalViews = data.totalViews ?? 0;
+        totalLikes = data.totalLikes ?? 0;
+        totalComments = data.totalComments ?? 0;
+      }
 
-  const topRegions = [
-    { name: "United States", pct: 28 },
-    { name: "China", pct: 18 },
-    { name: "Japan", pct: 12 },
-    { name: "Brazil", pct: 9 },
-    { name: "Germany", pct: 7 },
-    { name: "UK", pct: 6 },
-  ];
+      if (profileRes.ok) {
+        const data = await profileRes.json();
+        styleProfile = data.style ?? [];
+      }
 
-  // Mock insights
-  const insights = [
-    { title: "Competitor gap: Tutorial content underserved in niche", date: "Mar 14", titleZh: "竞品空白: 教程类内容在垂直领域供不应求" },
-    { title: "Your audience peak shifted to 8PM on weekdays", date: "Mar 13", titleZh: "你的受众活跃高峰已转移到工作日晚 8 点" },
-    { title: "Shorts under 30s outperform longer ones by 2.3x", date: "Mar 12", titleZh: "30 秒以下短视频表现优于长视频 2.3 倍" },
-    { title: "Warm color grading correlates with +18% retention", date: "Mar 11", titleZh: "暖色调调色与 +18% 完播率正相关" },
-    { title: "Posting frequency sweet spot: 4-5 times per week", date: "Mar 10", titleZh: "发布频率最佳点: 每周 4-5 次" },
-    { title: "Trending audio usage boosts reach by 40%", date: "Mar 9", titleZh: "使用热门音频可提升 40% 曝光量" },
-    { title: "Hook within first 1.5s critical for TikTok retention", date: "Mar 8", titleZh: "TikTok 前 1.5 秒的钩子对完播率至关重要" },
-  ];
+      if (insightsRes.ok) {
+        const data = await insightsRes.json();
+        insights = data.memories ?? data.profiles ?? [];
+      }
+    } catch (_) {
+      // silently fail
+    } finally {
+      loading = false;
+    }
+  }
+
+  function formatNum(n: number): string {
+    if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
+    if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
+    return n.toLocaleString();
+  }
 
   onMount(async () => {
+    fetchData();
     const unsub = subscribe(() => { lang = getLanguage(); });
     if (scrollToInsights) {
       await tick();
@@ -70,29 +72,25 @@
 </script>
 
 <div class="analytics" data-lang={lang}>
-  <!-- Profile Header -->
-  <div class="profile-card">
-    <div class="profile-top">
-      <img class="avatar" src={profile.avatar} alt="avatar" />
-      <div class="profile-identity">
-        <span class="username">{profile.username}</span>
-        <div class="platform-followers">
-          <span class="pf-badge tt">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5"/></svg>
-            {profile.ttFollowers}
-          </span>
-        </div>
+  <!-- Research Stats -->
+  <div class="research-stats-section">
+    <h3 class="sec-title">{tt("researchStats")}</h3>
+    <div class="stats-grid">
+      <div class="rs-card">
+        <span class="rs-num">{loading ? "—" : formatNum(totalWorks)}</span>
+        <span class="rs-label">{tt("worksCreated")}</span>
       </div>
-      <div class="profile-stats">
-        <div class="stat-item">
-          <span class="stat-num">{profile.todayLikes}</span>
-          <span class="stat-label">{tt("todayLikes")}</span>
-        </div>
-        <div class="stat-divider"></div>
-        <div class="stat-item">
-          <span class="stat-num">{profile.todayComments}</span>
-          <span class="stat-label">{tt("todayComments")}</span>
-        </div>
+      <div class="rs-card">
+        <span class="rs-num">{loading ? "—" : formatNum(totalViews)}</span>
+        <span class="rs-label">{lang === "zh" ? "总播放量" : "Total Views"}</span>
+      </div>
+      <div class="rs-card">
+        <span class="rs-num">{loading ? "—" : formatNum(totalLikes)}</span>
+        <span class="rs-label">{lang === "zh" ? "总点赞" : "Total Likes"}</span>
+      </div>
+      <div class="rs-card">
+        <span class="rs-num">{loading ? "—" : formatNum(totalComments)}</span>
+        <span class="rs-label">{lang === "zh" ? "总评论" : "Total Comments"}</span>
       </div>
     </div>
   </div>
@@ -100,109 +98,50 @@
   <!-- Style Keywords -->
   <div class="style-section">
     <h3 class="sec-title">{tt("styleKeywords")}</h3>
-    <div class="keyword-chips">
-      {#each styleKeywords as kw}
-        <span class="keyword-chip">{lang === "zh" ? kw.textZh : kw.text}</span>
-      {/each}
-    </div>
+    {#if loading}
+      <p class="empty-msg">{tt("loading")}</p>
+    {:else if styleProfile.length === 0}
+      <p class="empty-msg">{lang === "zh" ? "尚无风格画像。开始创作后 AI 将自动学习你的风格。" : "No style profile yet. Start creating content and AI will learn your style."}</p>
+    {:else}
+      <div class="keyword-chips">
+        {#each styleProfile as kw}
+          <span class="keyword-chip">{kw}</span>
+        {/each}
+      </div>
+    {/if}
   </div>
 
-  <!-- Fan Demographics -->
+  <!-- Demographics Placeholder -->
   <div class="demo-section">
     <h3 class="sec-title">{tt("fanDemographics")}</h3>
-    <div class="demo-grid">
-      <!-- Age Distribution -->
-      <div class="demo-card">
-        <h4>{tt("ageDistribution")}</h4>
-        <div class="bar-chart">
-          {#each ageData as age}
-            <div class="bar-row">
-              <span class="bar-label">{age.range}</span>
-              <div class="bar-track">
-                <div class="bar-fill" style="width: {age.pct}%"></div>
-              </div>
-              <span class="bar-pct">{age.pct}%</span>
-            </div>
-          {/each}
-        </div>
-      </div>
-
-      <!-- Gender Split -->
-      <div class="demo-card">
-        <h4>{tt("genderSplit")}</h4>
-        <div class="gender-visual">
-          <div class="gender-bar">
-            <div class="gender-male" style="width: {genderData.male}%"></div>
-            <div class="gender-female" style="width: {genderData.female}%"></div>
-          </div>
-          <div class="gender-legend">
-            <span class="gender-item male-item">
-              <span class="gender-dot male-dot"></span>
-              {tt("male")} {genderData.male}%
-            </span>
-            <span class="gender-item female-item">
-              <span class="gender-dot female-dot"></span>
-              {tt("female")} {genderData.female}%
-            </span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Top Regions -->
-      <div class="demo-card">
-        <h4>{tt("topRegions")}</h4>
-        <div class="bar-chart">
-          {#each topRegions as region}
-            <div class="bar-row">
-              <span class="bar-label region-label">{region.name}</span>
-              <div class="bar-track">
-                <div class="bar-fill accent" style="width: {region.pct * 3}%"></div>
-              </div>
-              <span class="bar-pct">{region.pct}%</span>
-            </div>
-          {/each}
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Research Stats -->
-  <div class="research-stats-section">
-    <h3 class="sec-title">{tt("researchStats")}</h3>
-    <div class="stats-grid">
-      <div class="rs-card">
-        <span class="rs-num">1,247</span>
-        <span class="rs-label">{tt("totalResearched")}</span>
-      </div>
-      <div class="rs-card">
-        <span class="rs-num">86</span>
-        <span class="rs-label">{tt("insightsGenerated")}</span>
-      </div>
-      <div class="rs-card">
-        <span class="rs-num">23</span>
-        <span class="rs-label">{tt("worksCreated")}</span>
-      </div>
-      <div class="rs-card">
-        <span class="rs-num">{lang === "zh" ? "2小时前" : "2h ago"}</span>
-        <span class="rs-label">{tt("lastResearchTime")}</span>
-      </div>
+    <div class="demo-placeholder">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      <p class="placeholder-text">{lang === "zh" ? "连接分析 API 后可查看粉丝画像数据（年龄、性别、地区分布）。" : "Connect analytics API for demographics (age, gender, regions)."}</p>
     </div>
   </div>
 
   <!-- Latest Insights -->
   <div class="insights-section" bind:this={insightsEl}>
     <h3 class="sec-title">{tt("latestInsights")}</h3>
-    <div class="insights-list">
-      {#each insights as insight}
-        <div class="insight-row">
-          <div class="insight-dot"></div>
-          <div class="insight-body">
-            <span class="insight-title">{lang === "zh" ? insight.titleZh : insight.title}</span>
-            <span class="insight-date">{insight.date}</span>
+    {#if loading}
+      <p class="empty-msg">{tt("loading")}</p>
+    {:else if insights.length === 0}
+      <p class="empty-msg">{lang === "zh" ? "暂无调研洞察。启动调研后洞察将在此显示。" : "No research insights yet. Start research to see insights here."}</p>
+    {:else}
+      <div class="insights-list">
+        {#each insights as insight}
+          <div class="insight-row">
+            <div class="insight-dot"></div>
+            <div class="insight-body">
+              <span class="insight-title">{insight.summary ?? insight.content}</span>
+              {#if insight.memory_type}
+                <span class="insight-type">{insight.memory_type}</span>
+              {/if}
+            </div>
           </div>
-        </div>
-      {/each}
-    </div>
+        {/each}
+      </div>
+    {/if}
   </div>
 </div>
 
@@ -221,104 +160,12 @@
     color: var(--text);
   }
 
-  /* ── Profile Card ──────────────────────────────────────────────────── */
-  .profile-card {
-    background: var(--card-bg);
-    border: 1px solid var(--card-border);
-    border-radius: var(--card-radius);
-    padding: 1.5rem;
-    box-shadow: var(--shadow-sm);
-    backdrop-filter: var(--card-blur);
-    -webkit-backdrop-filter: var(--card-blur);
-  }
-
-  .profile-top {
-    display: flex;
-    align-items: center;
-    gap: 1.25rem;
-  }
-
-  .avatar {
-    width: 60px;
-    height: 60px;
-    border-radius: 50%;
-    background: var(--bg-surface);
-    flex-shrink: 0;
-    border: 2.5px solid var(--border);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-  }
-
-  .profile-identity {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-  }
-
-  .username {
-    font-size: 1.2rem;
-    font-weight: 750;
-    letter-spacing: -0.025em;
-  }
-
-  .platform-followers {
-    display: flex;
-    gap: 0.5rem;
-  }
-
-  .pf-badge {
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    font-size: 0.75rem;
-    font-weight: 650;
-    padding: 0.25rem 0.7rem;
-    border-radius: 9999px;
-    color: #fff;
-    transition: transform var(--transition-fast);
-  }
-
-  .pf-badge:hover {
-    transform: scale(1.03);
-  }
-
-  .pf-badge.tt { background: linear-gradient(135deg, #25f4ee, #fe2c55); color: #fff; }
-  .pf-badge.tt svg { stroke: #fff; }
-
-  .profile-stats {
-    display: flex;
-    align-items: center;
-    gap: 1.25rem;
-    flex-shrink: 0;
-  }
-
-  .stat-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.15rem;
-  }
-
-  .stat-num {
-    font-size: 1.25rem;
-    font-weight: 750;
-    letter-spacing: -0.03em;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .stat-label {
-    font-size: 0.65rem;
+  .empty-msg {
+    font-size: 0.82rem;
     color: var(--text-dim);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    font-weight: 550;
-  }
-
-  .stat-divider {
-    width: 1px;
-    height: 36px;
-    background: var(--border);
+    font-weight: 500;
+    line-height: 1.6;
+    padding: 0.5rem 0;
   }
 
   /* ── Style Keywords ────────────────────────────────────────────────── */
@@ -362,130 +209,37 @@
     box-shadow: 0 4px 14px rgba(134, 120, 191, 0.25);
   }
 
-  /* ── Demographics ──────────────────────────────────────────────────── */
-  .demo-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 0.875rem;
-  }
-
-  @media (max-width: 768px) {
-    .demo-grid { grid-template-columns: 1fr; }
-  }
-
-  .demo-card {
+  /* ── Demographics Placeholder ────────────────────────────────────── */
+  .demo-section {
     background: var(--card-bg);
     border: 1px solid var(--card-border);
     border-radius: var(--card-radius);
-    padding: 1.125rem;
+    padding: 1.25rem 1.375rem;
     box-shadow: var(--shadow-sm);
     backdrop-filter: var(--card-blur);
     -webkit-backdrop-filter: var(--card-blur);
   }
 
-  .demo-card h4 {
-    font-size: 0.72rem;
-    font-weight: 650;
+  .demo-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 2rem 1rem;
+    text-align: center;
+  }
+
+  .demo-placeholder svg {
+    opacity: 0.35;
+  }
+
+  .placeholder-text {
+    font-size: 0.82rem;
     color: var(--text-dim);
-    margin-bottom: 0.875rem;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
+    font-weight: 500;
+    max-width: 360px;
+    line-height: 1.55;
   }
-
-  /* Bar chart */
-  .bar-chart {
-    display: flex;
-    flex-direction: column;
-    gap: 0.55rem;
-  }
-
-  .bar-row {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-  }
-
-  .bar-label {
-    width: 36px;
-    font-size: 0.72rem;
-    color: var(--text-muted);
-    font-weight: 550;
-    flex-shrink: 0;
-  }
-
-  .region-label {
-    width: 72px;
-    font-size: 0.72rem;
-  }
-
-  .bar-track {
-    flex: 1;
-    height: 7px;
-    background: var(--bg-surface);
-    border-radius: 4px;
-    overflow: hidden;
-  }
-
-  .bar-fill {
-    height: 100%;
-    background: var(--info);
-    border-radius: 4px;
-    transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  .bar-fill.accent {
-    background: var(--accent);
-  }
-
-  .bar-pct {
-    width: 32px;
-    font-size: 0.72rem;
-    font-weight: 650;
-    color: var(--text-secondary);
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-  }
-
-  /* Gender */
-  .gender-visual {
-    display: flex;
-    flex-direction: column;
-    gap: 0.875rem;
-  }
-
-  .gender-bar {
-    display: flex;
-    height: 10px;
-    border-radius: 5px;
-    overflow: hidden;
-    gap: 2px;
-  }
-
-  .gender-male { background: #60a5fa; border-radius: 5px 0 0 5px; }
-  .gender-female { background: #f472b6; border-radius: 0 5px 5px 0; }
-
-  .gender-legend {
-    display: flex;
-    gap: 1.25rem;
-  }
-
-  .gender-item {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: var(--text-secondary);
-  }
-
-  .gender-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-  }
-
-  .male-dot { background: #60a5fa; }
-  .female-dot { background: #f472b6; }
 
   /* ── Research Stats ─────────────────────────────────────────────────── */
   .research-stats-section {
@@ -594,9 +348,11 @@
     line-height: 1.5;
   }
 
-  .insight-date {
-    font-size: 0.7rem;
+  .insight-type {
+    font-size: 0.68rem;
+    font-weight: 600;
     color: var(--text-dim);
-    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
 </style>
