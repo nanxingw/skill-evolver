@@ -13,9 +13,10 @@ const API_VERSION = '2022-08-31'
 const SUBMIT_ACTION = 'CVSync2AsyncSubmitTask'
 const QUERY_ACTION = 'CVSync2AsyncGetResult'
 
-const IMAGE_REQ_KEY = 'jimeng_t2i_v31'
-const VIDEO_T2V_REQ_KEY = 'jimeng_vgfm_t2v_l20'
-const VIDEO_I2V_REQ_KEY = 'jimeng_vgfm_i2v_l20'
+const IMAGE_REQ_KEY = 'jimeng_t2i_v40'
+// Video 3.0 Pro uses a unified req_key for both T2V and I2V
+const VIDEO_T2V_REQ_KEY = 'jimeng_ti2v_v30_pro'
+const VIDEO_I2V_REQ_KEY = 'jimeng_ti2v_v30_pro'
 
 const POLL_INTERVAL_MS = 2000
 const POLL_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
@@ -62,14 +63,14 @@ function signRequest(
   const queryParams = `Action=${action}&Version=${API_VERSION}`
 
   // Canonical headers (must be sorted by lowercase header name)
+  // Note: content-type is excluded from signing per Volcengine spec
   const canonicalHeaders = [
-    `content-type:${contentType}`,
     `host:${host}`,
     `x-content-sha256:${payloadHash}`,
     `x-date:${timestamp}`,
   ].join('\n') + '\n'
 
-  const signedHeaders = 'content-type;host;x-content-sha256;x-date'
+  const signedHeaders = 'host;x-content-sha256;x-date'
 
   // Step 1: Create canonical request
   const canonicalRequest = [
@@ -220,17 +221,23 @@ export class JimengProvider implements GenerateProvider {
 
       const result = await submitAndPoll(this.accessKey, this.secretKey, payload)
 
-      // Extract image URL from result
+      // Extract image URL or base64 data from result
       const imageUrl = result.data?.image_urls?.[0]
-        ?? result.data?.binary_data_base64?.[0]
         ?? result.data?.resp_data?.[0]?.image_url
-
-      if (!imageUrl) {
-        return { success: false, error: 'No image URL in response', code: 'API_ERROR' }
-      }
+      const imageBase64 = result.data?.binary_data_base64?.[0]
 
       const assetPath = join(dataDir, 'works', workId, 'assets', 'images', filename)
-      await downloadFile(imageUrl, assetPath)
+
+      if (imageUrl) {
+        await downloadFile(imageUrl, assetPath)
+      } else if (imageBase64) {
+        // API returned raw base64 image data — write directly
+        const dir = assetPath.substring(0, assetPath.lastIndexOf('/'))
+        await mkdir(dir, { recursive: true })
+        await writeFile(assetPath, Buffer.from(imageBase64, 'base64'))
+      } else {
+        return { success: false, error: 'No image URL or base64 data in response', code: 'API_ERROR' }
+      }
 
       return {
         success: true,
@@ -262,19 +269,36 @@ export class JimengProvider implements GenerateProvider {
       }
 
       if (opts.firstFrame) {
-        payload.binary_data_base64 = [opts.firstFrame]
+        // If firstFrame looks like a URL, use image_urls; otherwise treat as base64
+        if (opts.firstFrame.startsWith('http://') || opts.firstFrame.startsWith('https://')) {
+          payload.image_urls = [opts.firstFrame]
+        } else {
+          payload.binary_data_base64 = [opts.firstFrame]
+        }
       }
       if (opts.lastFrame) {
-        payload.last_frame_base64 = opts.lastFrame
+        if (opts.lastFrame.startsWith('http://') || opts.lastFrame.startsWith('https://')) {
+          // For first+last frame mode, image_urls takes [firstFrame, lastFrame]
+          if (payload.image_urls) {
+            (payload.image_urls as string[]).push(opts.lastFrame)
+          } else {
+            payload.image_urls = [opts.lastFrame]
+          }
+        } else {
+          payload.binary_data_base64 = payload.binary_data_base64 ?? []
+          ;(payload.binary_data_base64 as string[]).push(opts.lastFrame)
+        }
       }
       if (opts.resolution) {
-        payload.resolution = opts.resolution
+        // Map resolution string to aspect_ratio format expected by API
+        payload.aspect_ratio = opts.resolution
       }
 
       const result = await submitAndPoll(this.accessKey, this.secretKey, payload)
 
-      // Extract video URL from result
+      // Extract video URL from result (different API versions use different field names)
       const videoUrl = result.data?.video_urls?.[0]
+        ?? result.data?.video_url
         ?? result.data?.resp_data?.[0]?.video_url
 
       if (!videoUrl) {
