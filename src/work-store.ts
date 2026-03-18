@@ -1,15 +1,15 @@
 // Work store — manages persistent work (content) definitions for AutoViral
-// Each work is a content piece flowing through a pipeline from idea to published.
+// Each work is a content piece flowing through a 4-step pipeline.
 
 import { readFile, writeFile, mkdir, readdir, rm, stat } from "node:fs/promises";
-import { join } from "node:path";
-import { homedir } from "node:os";
+import { join, relative } from "node:path";
 import yaml from "js-yaml";
+import { dataDir } from "./config.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type WorkType = "short-video" | "image-text" | "long-video" | "livestream";
-export type WorkStatus = "draft" | "creating" | "ready" | "publishing" | "published" | "failed";
+export type WorkType = "short-video" | "image-text";
+export type WorkStatus = "draft" | "creating" | "ready" | "failed";
 
 export interface PipelineStep {
   name: string;
@@ -19,28 +19,12 @@ export interface PipelineStep {
   note?: string;
 }
 
-export interface MetricsSnapshot {
-  platform: string;
-  views?: number;
-  likes?: number;
-  comments?: number;
-  shares?: number;
-  collectedAt: string;
-}
-
-export interface PlatformEntry {
-  platform: string;
-  publishedUrl?: string;
-  publishedAt?: string;
-  metrics?: MetricsSnapshot[];
-}
-
 export interface Work {
   id: string;
   title: string;
   type: WorkType;
   status: WorkStatus;
-  platforms: PlatformEntry[];
+  platforms: string[];
   pipeline: Record<string, PipelineStep>;
   cliSessionId?: string;
   coverImage?: string;
@@ -60,7 +44,7 @@ export interface WorkSummary {
 
 // ── Storage paths ────────────────────────────────────────────────────────────
 
-const WORKS_BASE = join(homedir(), ".skill-evolver", "works");
+const WORKS_BASE = join(dataDir, "works");
 const INDEX_FILE = join(WORKS_BASE, "works.yaml");
 
 interface WorksIndex {
@@ -104,6 +88,10 @@ function assetsDir(id: string): string {
   return join(workDir(id), "assets");
 }
 
+function outputDir(id: string): string {
+  return join(workDir(id), "output");
+}
+
 async function readWorkFile(id: string): Promise<Work | undefined> {
   try {
     const raw = await readFile(workFilePath(id), "utf-8");
@@ -128,46 +116,15 @@ function toSummary(w: Work): WorkSummary {
 // ── Pipeline templates ───────────────────────────────────────────────────────
 
 function defaultPipeline(type: WorkType): Record<string, PipelineStep> {
-  const step = (name: string): PipelineStep => ({ name, status: "pending" });
-
-  switch (type) {
-    case "short-video":
-      return {
-        research: step("Topic Research"),
-        script: step("Script Writing"),
-        shoot: step("Shooting"),
-        edit: step("Editing"),
-        thumbnail: step("Thumbnail & Caption"),
-        publish: step("Publish"),
-      };
-    case "long-video":
-      return {
-        research: step("Topic Research"),
-        outline: step("Outline & Structure"),
-        script: step("Script Writing"),
-        production: step("Production"),
-        edit: step("Post-production"),
-        publish: step("Publish"),
-      };
-    case "image-text":
-      return {
-        research: step("Topic Research"),
-        draft: step("Draft Writing"),
-        visuals: step("Visual Design"),
-        review: step("Review & Polish"),
-        seo: step("SEO & Tags"),
-        publish: step("Publish"),
-      };
-    case "livestream":
-      return {
-        research: step("Topic Research"),
-        outline: step("Run-of-Show"),
-        assets: step("Overlays & Assets"),
-        rehearsal: step("Rehearsal"),
-        broadcast: step("Go Live"),
-        recap: step("Recap & Clips"),
-      };
+  const names: Record<string, Record<string, string>> = {
+    "short-video": { research: "话题调研", plan: "分镜规划", assets: "素材生成", assembly: "视频合成" },
+    "image-text": { research: "话题调研", plan: "内容规划", assets: "图片生成", assembly: "图文排版" },
+  };
+  const result: Record<string, PipelineStep> = {};
+  for (const [key, name] of Object.entries(names[type])) {
+    result[key] = { name, status: "pending" };
   }
+  return result;
 }
 
 // ── ID generation ────────────────────────────────────────────────────────────
@@ -197,17 +154,27 @@ export async function createWork(input: {
   topicHint?: string;
 }): Promise<Work> {
   const now = new Date().toISOString();
+  const id = generateId();
   const work: Work = {
-    id: generateId(),
+    id,
     title: input.title,
     type: input.type,
     status: "draft",
-    platforms: input.platforms.map((p) => ({ platform: p })),
+    platforms: input.platforms,
     pipeline: defaultPipeline(input.type),
     topicHint: input.topicHint,
     createdAt: now,
     updatedAt: now,
   };
+
+  // Create workspace directories
+  const wDir = join(dataDir, "works", id);
+  await mkdir(join(wDir, "research"), { recursive: true });
+  await mkdir(join(wDir, "plan"), { recursive: true });
+  await mkdir(join(wDir, "assets", "frames"), { recursive: true });
+  await mkdir(join(wDir, "assets", "clips"), { recursive: true });
+  await mkdir(join(wDir, "assets", "images"), { recursive: true });
+  await mkdir(join(wDir, "output"), { recursive: true });
 
   await writeWorkFile(work);
 
@@ -258,16 +225,33 @@ export async function deleteWork(id: string): Promise<boolean> {
   return true;
 }
 
+/** Recursively list files in assets/ and output/ dirs, returning relative paths. */
 export async function listAssets(id: string): Promise<string[]> {
-  const dir = assetsDir(id);
-  try {
-    await mkdir(dir, { recursive: true });
-    return await readdir(dir);
-  } catch {
-    return [];
+  const results: string[] = [];
+  const baseDir = workDir(id);
+
+  async function walk(dir: string): Promise<void> {
+    try {
+      const entries = await readdir(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await walk(fullPath);
+        } else {
+          results.push(relative(baseDir, fullPath));
+        }
+      }
+    } catch {
+      // directory may not exist yet
+    }
   }
+
+  await walk(join(baseDir, "assets"));
+  await walk(join(baseDir, "output"));
+
+  return results;
 }
 
 export function getAssetPath(id: string, filename: string): string {
-  return join(assetsDir(id), filename);
+  return join(workDir(id), filename);
 }
