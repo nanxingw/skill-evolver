@@ -1,5 +1,6 @@
 import type { GenerateProvider } from './base.js'
 import { JimengProvider } from './jimeng.js'
+import { NanoBananaProvider } from './nanobanana.js'
 
 const providers = new Map<string, GenerateProvider>()
 
@@ -19,4 +20,5 @@ export function listProviders() {
 
 export function initProviders(config: any) {
   if (config.jimeng?.accessKey) registerProvider(new JimengProvider(config.jimeng))
+  if (config.openrouter?.apiKey) registerProvider(new NanoBananaProvider(config.openrouter.apiKey))
 }
