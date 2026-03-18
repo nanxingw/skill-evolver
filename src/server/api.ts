@@ -152,7 +152,7 @@ apiRoutes.get("/api/works/:id/assets", async (c) => {
   }
 });
 
-// GET /api/works/:id/assets/* — serve asset files (supports nested paths like images/scene-01.png)
+// GET /api/works/:id/assets/* — serve asset files (supports nested paths like images/scene-01.png or output/final.mp4)
 apiRoutes.get("/api/works/:id/assets/*", async (c) => {
   const id = c.req.param("id");
   // Extract the nested path after /assets/
@@ -162,7 +162,8 @@ apiRoutes.get("/api/works/:id/assets/*", async (c) => {
   if (!nestedPath) return c.json({ error: "Asset path required" }, 400);
 
   try {
-    const filePath = getAssetPath(id, `assets/${nestedPath}`);
+    // nestedPath maps directly to workspace subdirectory (e.g. "images/xxx.png", "output/xxx.png")
+    const filePath = getAssetPath(id, nestedPath);
     const content = await readFile(filePath);
     return new Response(content, {
       headers: { "Content-Type": getMimeType(filePath) },
