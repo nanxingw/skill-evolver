@@ -16,7 +16,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import { loadConfig, dataDir } from "./config.js";
-import { getWork, type Work, type PipelineStep } from "./work-store.js";
+import { getWork, updateWork, type Work, type PipelineStep } from "./work-store.js";
 import { listSharedAssets } from "./shared-assets.js";
 import { MemoryClient } from "./memory.js";
 
@@ -191,20 +191,74 @@ ${memoryContext}
     };
     this.sessions.set(workId, session);
 
-    // Build system prompt from work context
-    let systemPrompt = initialPrompt;
+    // Load persisted cliSessionId from work.yaml (survives server restart)
+    let savedSessionId: string | undefined;
     try {
       const work = await getWork(workId);
-      if (work) {
-        const contextPrompt = await this.buildSystemPrompt(work);
-        // Prepend system context, then append the user's initial message
-        systemPrompt = contextPrompt + "\n\n---\n\n用户消息：" + initialPrompt;
+      if (work?.cliSessionId) {
+        savedSessionId = work.cliSessionId;
+        session.cliSessionId = savedSessionId;
       }
-    } catch {
-      // Fall back to plain initialPrompt
+    } catch { /* ignore */ }
+
+    if (savedSessionId) {
+      // Resume existing conversation — agent keeps full context
+      this.spawnCli(session, initialPrompt, savedSessionId);
+    } else {
+      // First time — build system prompt with full context
+      let systemPrompt = initialPrompt;
+      try {
+        const work = await getWork(workId);
+        if (work) {
+          const contextPrompt = await this.buildSystemPrompt(work);
+          systemPrompt = contextPrompt + "\n\n---\n\n用户消息：" + initialPrompt;
+        }
+      } catch { /* fall back to plain prompt */ }
+      this.spawnCli(session, systemPrompt);
     }
 
-    this.spawnCli(session, systemPrompt);
+    return session;
+  }
+
+  /**
+   * Create an ephemeral trend research session.
+   * Uses haiku model, auto-kills after 90s, filters CLI events into simplified research events.
+   */
+  async createTrendSession(sessionKey: string, prompt: string): Promise<WsSession> {
+    const existing = this.sessions.get(sessionKey);
+    if (existing?.cliProcess) {
+      try { existing.cliProcess.kill("SIGTERM"); } catch { /* dead */ }
+    }
+
+    const session: WsSession = {
+      workId: sessionKey,
+      idle: false,
+      browserSockets: existing?.browserSockets ?? new Set(),
+      messageHistory: [],
+      model: "haiku",
+    };
+    this.sessions.set(sessionKey, session);
+
+    this.spawnCli(session, prompt);
+
+    // Auto-kill after 90s
+    setTimeout(() => {
+      if (session.cliProcess) {
+        try { session.cliProcess.kill("SIGTERM"); } catch { /* dead */ }
+        session.cliProcess = undefined;
+        this.broadcastToBrowsers(sessionKey, {
+          event: "research_error",
+          data: { message: "搜索超时，请稍后重试" },
+        });
+        this.cleanupTrendSession(sessionKey);
+      }
+    }, 90000);
+
+    this.broadcastToBrowsers(sessionKey, {
+      event: "research_started",
+      data: { platform: sessionKey.split("_")[1] ?? "unknown" },
+    });
+
     return session;
   }
 
@@ -212,7 +266,7 @@ ${memoryContext}
    * Send a follow-up message using --resume + new -p.
    * Kills current CLI (if busy) and spawns a new one that resumes the session.
    */
-  sendMessage(workId: string, text: string): boolean {
+  async sendMessage(workId: string, text: string): Promise<boolean> {
     const session = this.sessions.get(workId);
     if (!session) return false;
 
@@ -228,12 +282,31 @@ ${memoryContext}
       session.cliProcess = undefined;
     }
 
-    if (!session.cliSessionId) {
-      // No session to resume, start fresh with this message
-      this.spawnCli(session, text);
+    // Try to resume: check in-memory first, then persisted in work.yaml
+    let resumeId = session.cliSessionId;
+    if (!resumeId) {
+      try {
+        const work = await getWork(workId);
+        if (work?.cliSessionId) {
+          resumeId = work.cliSessionId;
+          session.cliSessionId = resumeId;
+        }
+      } catch { /* ignore */ }
+    }
+
+    if (resumeId) {
+      this.spawnCli(session, text, resumeId);
     } else {
-      // Resume previous session with new message
-      this.spawnCli(session, text, session.cliSessionId);
+      // No session to resume — build full context prompt so agent knows the project
+      let prompt = text;
+      try {
+        const work = await getWork(workId);
+        if (work) {
+          const contextPrompt = await this.buildSystemPrompt(work);
+          prompt = contextPrompt + "\n\n---\n\n用户消息：" + text;
+        }
+      } catch { /* fall back to plain text */ }
+      this.spawnCli(session, prompt);
     }
 
     session.idle = false;
@@ -261,12 +334,44 @@ ${memoryContext}
     return true;
   }
 
+  killTrendSession(sessionKey: string): boolean {
+    if (!sessionKey.startsWith("trends_")) return false;
+    const session = this.sessions.get(sessionKey);
+    if (!session) return false;
+    if (session.cliProcess) {
+      try { session.cliProcess.kill("SIGTERM"); } catch { /* dead */ }
+      session.cliProcess = undefined;
+    }
+    this.broadcastToBrowsers(sessionKey, {
+      event: "research_error",
+      data: { message: "用户取消" },
+    });
+    this.cleanupTrendSession(sessionKey);
+    return true;
+  }
+
   getSession(workId: string): WsSession | undefined {
     return this.sessions.get(workId);
   }
 
   getAllSessions(): Map<string, WsSession> {
     return this.sessions;
+  }
+
+  private cleanupTrendSession(sessionKey: string): void {
+    this.broadcastToBrowsers(sessionKey, {
+      event: "session_closed",
+      data: { sessionKey },
+    });
+    const session = this.sessions.get(sessionKey);
+    if (session) {
+      for (const ws of session.browserSockets) {
+        try { ws.close(); } catch { /* ignore */ }
+      }
+    }
+    setTimeout(() => {
+      this.sessions.delete(sessionKey);
+    }, 5000);
   }
 
   // ── CLI spawn ────────────────────────────────────────────────────────────
@@ -300,6 +405,7 @@ ${memoryContext}
 
     // Accumulate assistant text chunks for this turn
     let turnText = "";
+    let lastEventWasToolResult = false;
 
     // Parse NDJSON from stdout
     let buffer = "";
@@ -313,10 +419,47 @@ ${memoryContext}
         try {
           const msg: NdjsonMessage = JSON.parse(line);
 
-          // system.init — capture session ID
+          // Trend session event filtering
+          if (session.workId.startsWith("trends_")) {
+            if (msg.type === "assistant" && msg.message?.content) {
+              for (const block of msg.message.content as Array<Record<string, unknown>>) {
+                if (block.type === "tool_use" && block.name === "WebSearch") {
+                  const input = block.input as Record<string, unknown> | undefined;
+                  this.broadcastToBrowsers(session.workId, {
+                    event: "search_query",
+                    data: { query: (input?.query as string) ?? "" },
+                  });
+                  lastEventWasToolResult = false;
+                }
+              }
+            }
+            if (msg.type === "user" && (msg as Record<string, unknown>).message) {
+              const userMsg = (msg as Record<string, unknown>).message as Record<string, unknown>;
+              const content = userMsg.content as Array<Record<string, unknown>> | undefined;
+              if (content) {
+                for (const block of content) {
+                  if (block.type === "tool_result") {
+                    const resultText = typeof block.content === "string"
+                      ? block.content
+                      : JSON.stringify(block.content);
+                    const summary = resultText.slice(0, 80) || "搜索完成";
+                    this.broadcastToBrowsers(session.workId, {
+                      event: "search_result",
+                      data: { summary },
+                    });
+                  }
+                }
+                lastEventWasToolResult = true;
+              }
+            }
+          }
+
+          // system.init — capture session ID and persist to work.yaml
           if (msg.type === "system" && msg.subtype === "init") {
             if (msg.session_id) {
               session.cliSessionId = msg.session_id;
+              // Persist so we can --resume after server restart
+              updateWork(session.workId, { cliSessionId: msg.session_id }).catch(() => {});
             }
             this.broadcastToBrowsers(session.workId, {
               event: "session_ready",
@@ -329,6 +472,13 @@ ${memoryContext}
           if (msg.type === "assistant" && msg.message?.content) {
             for (const block of msg.message.content as Array<Record<string, unknown>>) {
               if (block.type === "text" && block.text) {
+                if (session.workId.startsWith("trends_") && lastEventWasToolResult) {
+                  this.broadcastToBrowsers(session.workId, {
+                    event: "analyzing",
+                    data: {},
+                  });
+                  lastEventWasToolResult = false;
+                }
                 turnText += block.text as string;
                 this.broadcastToBrowsers(session.workId, {
                   event: "assistant_text",
@@ -361,7 +511,7 @@ ${memoryContext}
                     : JSON.stringify(block.content);
                   this.broadcastToBrowsers(session.workId, {
                     event: "tool_result",
-                    data: { workId: session.workId, content: resultContent?.slice(0, 500) },
+                    data: { workId: session.workId, content: resultContent },
                   });
                 }
               }
@@ -423,10 +573,20 @@ ${memoryContext}
     proc.on("exit", (code, signal) => {
       session.cliProcess = undefined;
       session.idle = true;
-      this.broadcastToBrowsers(session.workId, {
-        event: "cli_exited",
-        data: { workId: session.workId, code, signal },
-      });
+      if (session.workId.startsWith("trends_")) {
+        this.broadcastToBrowsers(session.workId, {
+          event: code === 0 ? "research_done" : "research_error",
+          data: code === 0
+            ? { platform: session.workId.split("_")[1] ?? "unknown" }
+            : { message: `CLI exited with code ${code}` },
+        });
+        this.cleanupTrendSession(session.workId);
+      } else {
+        this.broadcastToBrowsers(session.workId, {
+          event: "cli_exited",
+          data: { workId: session.workId, code, signal },
+        });
+      }
     });
 
     proc.on("error", (err) => {
@@ -455,16 +615,27 @@ ${memoryContext}
       timestamp: new Date().toISOString(),
     }));
 
-    ws.on("message", (raw) => {
+    ws.on("message", async (raw) => {
       try {
         const msg = JSON.parse(raw.toString());
         if (msg.action === "send" && typeof msg.text === "string") {
-          this.sendMessage(workId, msg.text);
+          await this.sendMessage(workId, msg.text);
         }
       } catch { /* invalid JSON */ }
     });
 
-    ws.on("close", () => session.browserSockets.delete(ws));
+    ws.on("close", () => {
+      session.browserSockets.delete(ws);
+      if (session.workId.startsWith("trends_") && session.browserSockets.size === 0) {
+        setTimeout(() => {
+          if (session.browserSockets.size === 0 && session.cliProcess) {
+            try { session.cliProcess.kill("SIGTERM"); } catch { /* dead */ }
+            session.cliProcess = undefined;
+            this.cleanupTrendSession(session.workId);
+          }
+        }, 3000);
+      }
+    });
     ws.on("error", () => session.browserSockets.delete(ws));
   }
 
