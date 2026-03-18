@@ -46,25 +46,45 @@ export class NanoBananaProvider implements GenerateProvider {
       }
 
       const data = await res.json() as any
-      const content = data.choices?.[0]?.message?.content
-
-      if (!content) {
-        return { success: false, error: 'No content in response', code: 'API_ERROR' }
-      }
+      const message = data.choices?.[0]?.message
+      const content = message?.content
+      const images = message?.images
 
       // Extract base64 image data from response
-      // Content can be a string or an array of content parts
+      // OpenRouter may return images in message.images[] or message.content
       let base64Data: string | null = null
       let mimeType = 'image/png'
 
-      if (typeof content === 'string') {
-        // Look for data URL in text
+      // Check message.images array first (OpenRouter Gemini image generation format)
+      if (Array.isArray(images)) {
+        for (const img of images) {
+          const url = img?.image_url?.url ?? img?.url
+          if (url) {
+            const match = url.match(/data:(image\/[^;]+);base64,(.+)/)
+            if (match) {
+              mimeType = match[1]
+              base64Data = match[2]
+              break
+            }
+          }
+          if (img?.source?.data) {
+            base64Data = img.source.data
+            mimeType = img.source.media_type ?? 'image/png'
+            break
+          }
+        }
+      }
+
+      // Fall back to content field
+      if (!base64Data && typeof content === 'string') {
         const match = content.match(/data:(image\/[^;]+);base64,([A-Za-z0-9+/=]+)/)
         if (match) {
           mimeType = match[1]
           base64Data = match[2]
         }
-      } else if (Array.isArray(content)) {
+      }
+
+      if (!base64Data && Array.isArray(content)) {
         for (const part of content) {
           if (part.type === 'image_url' && part.image_url?.url) {
             const match = part.image_url.url.match(/data:(image\/[^;]+);base64,(.+)/)
@@ -74,13 +94,11 @@ export class NanoBananaProvider implements GenerateProvider {
               break
             }
           }
-          // Also check for inline_data format
           if (part.type === 'image' && part.source?.data) {
             base64Data = part.source.data
             mimeType = part.source.media_type ?? 'image/png'
             break
           }
-          // Check for text content with embedded base64
           if (part.type === 'text' && typeof part.text === 'string') {
             const textMatch = part.text.match(/data:(image\/[^;]+);base64,([A-Za-z0-9+/=]+)/)
             if (textMatch) {
