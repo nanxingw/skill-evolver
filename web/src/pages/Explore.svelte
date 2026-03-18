@@ -1,225 +1,194 @@
 <script lang="ts">
-  import { t, getLanguage, subscribe } from "../lib/i18n";
   import { onMount } from "svelte";
+  import MarkdownBlock from "../components/MarkdownBlock.svelte";
 
-  let lang = $state(getLanguage());
+  type Platform = "douyin" | "xiaohongshu";
 
-  // Reactive t() wrapper - forces Svelte to re-evaluate when lang changes
-  function tt(key: string): string { void lang; return t(key); }
-
-  interface TrendingVideo {
+  interface TrendDirection {
     title: string;
-    thumb: string;
-    views: string;
-    likes: string;
-    comments: string;
+    heat: number;          // 1-5
+    competition: string;   // 低/中/高
+    description: string;
   }
 
-  interface HotTag {
-    tag: string;
-    posts: string;
-    trend: "up" | "down" | "stable";
+  let activePlatform: Platform = $state("douyin");
+  let loading = $state(false);
+  let refreshing = $state(false);
+  let directions: TrendDirection[] = $state([]);
+  let rawContent: string = $state("");
+  let isStructured = $state(true);
+
+  function parseTrends(data: any): void {
+    // Structured data with topics/directions array
+    if (data && typeof data === "object") {
+      const arr = data.topics ?? data.directions ?? data.trends ?? data.items;
+      if (Array.isArray(arr) && arr.length > 0) {
+        directions = arr.map((item: any) => ({
+          title: item.title ?? item.name ?? item.direction ?? "未知方向",
+          heat: Math.min(5, Math.max(1, Number(item.heat ?? item.hotness ?? item.score ?? 3))),
+          competition: item.competition ?? item.competitionLevel ?? "中",
+          description: item.description ?? item.desc ?? item.summary ?? "",
+        }));
+        rawContent = "";
+        isStructured = true;
+        return;
+      }
+      // If object has a content/text/raw field
+      const text = data.content ?? data.text ?? data.raw ?? data.markdown;
+      if (typeof text === "string" && text.trim()) {
+        rawContent = text;
+        directions = [];
+        isStructured = false;
+        return;
+      }
+    }
+    // Plain string/text response
+    if (typeof data === "string" && data.trim()) {
+      rawContent = data;
+      directions = [];
+      isStructured = false;
+      return;
+    }
+    // Empty
+    directions = [];
+    rawContent = "";
+    isStructured = true;
   }
 
-  // ── Reactive data from API ──
-  let section1Videos: TrendingVideo[] = $state([]);
-  let section2Videos: TrendingVideo[] = $state([]);
-  let section1Tags: HotTag[] = $state([]);
-  let section2Tags: HotTag[] = $state([]);
-  let loading = $state(true);
-  let collecting = $state(false);
-
-  async function fetchTrends() {
+  async function loadTrends() {
     loading = true;
     try {
-      // Platform 1: Douyin (zh) or Xiaohongshu as primary
-      const [res1, res2] = await Promise.all([
-        fetch("/api/trends/xiaohongshu"),
-        fetch("/api/trends/douyin"),
-      ]);
-      if (res1.ok) {
-        const data = await res1.json();
-        section2Videos = data.videos ?? [];
-        section2Tags = data.tags ?? [];
+      const res = await fetch(`/api/trends/${activePlatform}`);
+      if (res.ok) {
+        const contentType = res.headers.get("content-type") ?? "";
+        if (contentType.includes("application/json")) {
+          const data = await res.json();
+          parseTrends(data);
+        } else {
+          const text = await res.text();
+          parseTrends(text);
+        }
+      } else {
+        directions = [];
+        rawContent = "";
       }
-      if (res2.ok) {
-        const data = await res2.json();
-        section1Videos = data.videos ?? [];
-        section1Tags = data.tags ?? [];
-      }
-    } catch (_) {
-      // silently fail - empty state will show
+    } catch {
+      directions = [];
+      rawContent = "";
     } finally {
       loading = false;
     }
   }
 
-  async function handleCollectNow() {
-    collecting = true;
+  async function handleRefresh() {
+    refreshing = true;
     try {
-      const res = await fetch("/api/collector/trigger", {
+      await fetch("/api/trends/refresh", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "research", platforms: ["xiaohongshu", "douyin"] }),
+        body: JSON.stringify({ platform: activePlatform }),
       });
-      const data = await res.json();
-      if (data.collected?.length > 0) {
-        await fetchTrends();
-      }
-    } catch (_) {
+      await loadTrends();
+    } catch {
       // ignore
     } finally {
-      collecting = false;
+      refreshing = false;
     }
   }
 
-  let hasData = $derived(
-    section1Videos.length > 0 || section2Videos.length > 0 ||
-    section1Tags.length > 0 || section2Tags.length > 0
-  );
+  function switchPlatform(p: Platform) {
+    if (p === activePlatform) return;
+    activePlatform = p;
+    loadTrends();
+  }
+
+  function heatDots(level: number): string {
+    return Array.from({ length: 5 }, (_, i) => i < level ? "\u{1F525}" : "\u00B7").join("");
+  }
+
+  function dispatchCreate(dir: TrendDirection) {
+    const event = new CustomEvent("createWork", {
+      bubbles: true,
+      detail: { topicHint: dir.title + " - " + dir.description, platform: activePlatform },
+    });
+    document.dispatchEvent(event);
+  }
+
+  let hasData = $derived(directions.length > 0 || rawContent.length > 0);
 
   onMount(() => {
-    fetchTrends();
-    const unsub = subscribe(() => { lang = getLanguage(); });
-    return () => unsub();
+    loadTrends();
   });
 </script>
 
-<div class="explore" data-lang={lang}>
+<div class="explore">
+  <!-- Platform pill tabs -->
+  <div class="tab-bar">
+    <div class="pill-tabs">
+      <button
+        class="pill-tab"
+        class:active={activePlatform === "douyin"}
+        onclick={() => switchPlatform("douyin")}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5"/></svg>
+        抖音
+      </button>
+      <button
+        class="pill-tab"
+        class:active={activePlatform === "xiaohongshu"}
+        onclick={() => switchPlatform("xiaohongshu")}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M8 12h8M12 8v8"/></svg>
+        小红书
+      </button>
+    </div>
+    <button class="refresh-btn" onclick={handleRefresh} disabled={refreshing || loading}>
+      <svg class="refresh-icon" class:spinning={refreshing} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+      {refreshing ? "刷新中..." : "刷新趋势"}
+    </button>
+  </div>
+
+  <!-- Content -->
   {#if loading}
-    <div class="empty-state">
-      <p class="empty-text">{tt("loading")}</p>
+    <div class="loading-state">
+      <div class="loader"></div>
+      <p>正在加载趋势数据...</p>
     </div>
   {:else if !hasData}
     <div class="empty-state">
       <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <p class="empty-title">{lang === "zh" ? "暂无趋势数据" : "No trend data yet"}</p>
-      <p class="empty-desc">{lang === "zh" ? "点击下方按钮开始采集平台趋势数据。" : "Click the button below to start collecting platform trend data."}</p>
-      <button class="collect-btn" onclick={handleCollectNow} disabled={collecting}>
-        {collecting ? (lang === "zh" ? "采集中..." : "Collecting...") : (lang === "zh" ? "立即采集" : "Collect Now")}
+      <p class="empty-title">暂无趋势数据</p>
+      <p class="empty-desc">点击刷新获取最新趋势</p>
+      <button class="action-btn" onclick={handleRefresh} disabled={refreshing}>
+        {refreshing ? "获取中..." : "刷新趋势"}
       </button>
     </div>
+  {:else if isStructured}
+    <div class="trend-grid">
+      {#each directions as dir, i}
+        <div class="trend-card" style="animation-delay: {i * 0.05}s">
+          <div class="card-header">
+            <h3 class="card-title">{dir.title}</h3>
+            <span class="competition-badge" class:comp-low={dir.competition === "低"} class:comp-mid={dir.competition === "中"} class:comp-high={dir.competition === "高"}>
+              竞争{dir.competition}
+            </span>
+          </div>
+          <div class="heat-row">
+            <span class="heat-label">热度</span>
+            <span class="heat-dots">{heatDots(dir.heat)}</span>
+          </div>
+          {#if dir.description}
+            <p class="card-desc">{dir.description}</p>
+          {/if}
+          <button class="create-btn" onclick={() => dispatchCreate(dir)}>
+            以此创建作品
+          </button>
+        </div>
+      {/each}
+    </div>
   {:else}
-    <div class="explore-grid">
-      <!-- Section 1: 抖音热门视频 / Platform 1 Trending -->
-      <div class="explore-section">
-        <h3 class="section-title">
-          {#if lang === "zh"}
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fe2c55" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5"/></svg>
-          {:else}
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ff0000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19.1c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.43z"/><polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02" fill="#ff0000" stroke="none"/></svg>
-          {/if}
-          {tt("ytTrending")}
-        </h3>
-        {#if section1Videos.length > 0}
-          <div class="video-list">
-            {#each section1Videos as video, i}
-              <div class="video-card">
-                <div class="video-rank">{i + 1}</div>
-                {#if video.thumb}
-                  <div class="video-thumb">
-                    <img src={video.thumb} alt={video.title} loading="lazy" />
-                  </div>
-                {/if}
-                <div class="video-info">
-                  <span class="video-title">{video.title}</span>
-                  <div class="video-stats">
-                    <span>▶ {video.views}</span>
-                    <span>♥ {video.likes}</span>
-                    <span>💬 {video.comments}</span>
-                  </div>
-                </div>
-              </div>
-            {/each}
-          </div>
-        {:else}
-          <p class="section-empty">{lang === "zh" ? "暂无数据" : "No data available"}</p>
-        {/if}
-      </div>
-
-      <!-- Section 2: 小红书热门视频 / Platform 2 Trending -->
-      <div class="explore-section">
-        <h3 class="section-title">
-          {#if lang === "zh"}
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fe2c55" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M8 12h8M12 8v8"/></svg>
-          {:else}
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5" stroke="#69c9d0"/></svg>
-          {/if}
-          {tt("ttTrending")}
-        </h3>
-        {#if section2Videos.length > 0}
-          <div class="video-list">
-            {#each section2Videos as video, i}
-              <div class="video-card">
-                <div class="video-rank">{i + 1}</div>
-                {#if video.thumb}
-                  <div class="video-thumb">
-                    <img src={video.thumb} alt={video.title} loading="lazy" />
-                  </div>
-                {/if}
-                <div class="video-info">
-                  <span class="video-title">{video.title}</span>
-                  <div class="video-stats">
-                    <span>▶ {video.views}</span>
-                    <span>♥ {video.likes}</span>
-                    <span>💬 {video.comments}</span>
-                  </div>
-                </div>
-              </div>
-            {/each}
-          </div>
-        {:else}
-          <p class="section-empty">{lang === "zh" ? "暂无数据" : "No data available"}</p>
-        {/if}
-      </div>
-
-      <!-- Section 3: Hot Tags Platform 1 -->
-      <div class="explore-section">
-        <h3 class="section-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={lang === "zh" ? "#fe2c55" : "#ff0000"} stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>
-          {tt("ytTags")}
-        </h3>
-        {#if section1Tags.length > 0}
-          <div class="tag-list">
-            {#each section1Tags as tag, i}
-              <div class="tag-row">
-                <span class="tag-rank" class:top3={i < 3}>{i + 1}</span>
-                <span class="tag-name">{tag.tag}</span>
-                <span class="tag-posts">{tag.posts} {tt("posts")}</span>
-                <span class="tag-trend" class:trend-up={tag.trend === "up"} class:trend-down={tag.trend === "down"}>
-                  {#if tag.trend === "up"}↑{:else if tag.trend === "down"}↓{:else}—{/if}
-                </span>
-              </div>
-            {/each}
-          </div>
-        {:else}
-          <p class="section-empty">{lang === "zh" ? "暂无话题数据" : "No topic data available"}</p>
-        {/if}
-      </div>
-
-      <!-- Section 4: Hot Tags Platform 2 -->
-      <div class="explore-section">
-        <h3 class="section-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={lang === "zh" ? "#fe2c55" : "#69c9d0"} stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>
-          {tt("ttTags")}
-        </h3>
-        {#if section2Tags.length > 0}
-          <div class="tag-list">
-            {#each section2Tags as tag, i}
-              <div class="tag-row">
-                <span class="tag-rank" class:top3={i < 3}>{i + 1}</span>
-                <span class="tag-name">{tag.tag}</span>
-                <span class="tag-posts">{tag.posts} {tt("posts")}</span>
-                <span class="tag-trend" class:trend-up={tag.trend === "up"} class:trend-down={tag.trend === "down"}>
-                  {#if tag.trend === "up"}↑{:else if tag.trend === "down"}↓{:else}—{/if}
-                </span>
-              </div>
-            {/each}
-          </div>
-        {:else}
-          <p class="section-empty">{lang === "zh" ? "暂无话题数据" : "No topic data available"}</p>
-        {/if}
-      </div>
+    <div class="raw-content glass-card">
+      <MarkdownBlock text={rawContent} />
     </div>
   {/if}
 </div>
@@ -228,51 +197,127 @@
   .explore {
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
+    gap: 1.25rem;
   }
 
-  .explore-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1.125rem;
-  }
-
-  @media (max-width: 768px) {
-    .explore-grid { grid-template-columns: 1fr; }
-  }
-
-  .explore-section {
-    background: var(--card-bg);
-    border: 1px solid var(--card-border);
-    border-radius: var(--card-radius);
-    padding: 1.125rem 1.25rem;
-    box-shadow: var(--shadow-sm);
-    backdrop-filter: var(--card-blur);
-    -webkit-backdrop-filter: var(--card-blur);
-  }
-
-  .section-title {
+  /* ── Tab bar ─────────────────────────────────────────────────── */
+  .tab-bar {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    font-size: 0.92rem;
-    font-weight: 700;
-    margin-bottom: 0.875rem;
-    letter-spacing: -0.015em;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
   }
 
-  .section-title svg {
-    opacity: 0.85;
+  .pill-tabs {
+    display: flex;
+    gap: 0.25rem;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 12px;
+    padding: 0.2rem;
   }
 
-  .section-empty {
-    font-size: 0.82rem;
+  .pill-tab {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 1.1rem;
+    border-radius: 10px;
+    border: none;
+    background: none;
     color: var(--text-dim);
-    font-weight: 500;
-    padding: 1rem 0;
+    font-size: 0.84rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
   }
 
-  /* ── Empty State ─────────────────────────────────────────────────── */
+  .pill-tab:hover {
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .pill-tab.active {
+    background: var(--accent-gradient);
+    color: var(--accent-text);
+    box-shadow: 0 2px 10px rgba(134, 120, 191, 0.3);
+  }
+
+  .pill-tab svg {
+    opacity: 0.75;
+  }
+
+  .pill-tab.active svg {
+    opacity: 1;
+  }
+
+  .refresh-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 1rem;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    backdrop-filter: blur(8px);
+  }
+
+  .refresh-btn:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(134, 120, 191, 0.08);
+  }
+
+  .refresh-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .refresh-icon {
+    transition: transform 0.3s ease;
+  }
+
+  .refresh-icon.spinning {
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  /* ── Loading ──────────────────────────────────────────────────── */
+  .loading-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    padding: 4rem 2rem;
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    font-weight: 500;
+  }
+
+  .loader {
+    width: 28px;
+    height: 28px;
+    border: 2.5px solid rgba(134, 120, 191, 0.15);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  /* ── Empty state ─────────────────────────────────────────────── */
   .empty-state {
     display: flex;
     flex-direction: column;
@@ -284,7 +329,7 @@
   }
 
   .empty-state svg {
-    opacity: 0.4;
+    opacity: 0.35;
     margin-bottom: 0.5rem;
   }
 
@@ -299,172 +344,185 @@
     font-size: 0.85rem;
     color: var(--text-dim);
     font-weight: 500;
-    max-width: 360px;
+    max-width: 320px;
     line-height: 1.5;
   }
 
-  .empty-text {
-    font-size: 0.85rem;
-    color: var(--text-dim);
-    font-weight: 500;
-  }
-
-  .collect-btn {
+  .action-btn {
     margin-top: 0.5rem;
-    padding: 0.65rem 1.5rem;
+    padding: 0.6rem 1.4rem;
     border-radius: 10px;
     border: none;
     background: var(--accent-gradient);
     color: var(--accent-text);
-    font-size: 0.85rem;
+    font-size: 0.84rem;
     font-weight: 650;
+    font-family: inherit;
     cursor: pointer;
-    transition: opacity var(--transition-fast);
+    transition: all 0.2s ease;
   }
 
-  .collect-btn:hover { opacity: 0.9; }
-  .collect-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+  .action-btn:hover:not(:disabled) {
+    opacity: 0.9;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(134, 120, 191, 0.3);
+  }
 
-  /* ── Video List ────────────────────────────────────────────────────── */
-  .video-list {
+  .action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* ── Trend grid ──────────────────────────────────────────────── */
+  .trend-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+  }
+
+  @media (max-width: 640px) {
+    .trend-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .trend-card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--card-radius, 14px);
+    padding: 1.25rem;
+    box-shadow: var(--shadow-sm);
+    backdrop-filter: var(--card-blur);
+    -webkit-backdrop-filter: var(--card-blur);
     display: flex;
     flex-direction: column;
-    gap: 0.375rem;
-    max-height: 480px;
-    overflow-y: auto;
+    gap: 0.75rem;
+    transition: border-color 0.25s ease, transform 0.25s ease, box-shadow 0.25s ease;
+    animation: fadeInUp 0.35s ease both;
   }
 
-  .video-card {
+  .trend-card:hover {
+    border-color: rgba(134, 120, 191, 0.35);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  }
+
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .card-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -0.015em;
+    line-height: 1.4;
+    flex: 1;
+    margin: 0;
+  }
+
+  .competition-badge {
+    font-size: 0.68rem;
+    font-weight: 650;
+    padding: 0.2rem 0.6rem;
+    border-radius: 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .comp-low {
+    background: rgba(52, 211, 153, 0.12);
+    color: #34d399;
+    border: 1px solid rgba(52, 211, 153, 0.2);
+  }
+
+  .comp-mid {
+    background: rgba(251, 191, 36, 0.12);
+    color: #fbbf24;
+    border: 1px solid rgba(251, 191, 36, 0.2);
+  }
+
+  .comp-high {
+    background: rgba(251, 113, 133, 0.12);
+    color: #fb7185;
+    border: 1px solid rgba(251, 113, 133, 0.2);
+  }
+
+  .heat-row {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    padding: 0.45rem;
-    border-radius: 10px;
-    transition: background var(--transition-fast);
-    cursor: pointer;
+    gap: 0.5rem;
   }
 
-  .video-card:hover { background: var(--bg-hover); }
-
-  .video-rank {
-    width: 22px;
+  .heat-label {
     font-size: 0.72rem;
-    font-weight: 750;
+    font-weight: 600;
     color: var(--text-dim);
-    text-align: center;
-    flex-shrink: 0;
-    font-variant-numeric: tabular-nums;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
 
-  .video-card:nth-child(1) .video-rank,
-  .video-card:nth-child(2) .video-rank,
-  .video-card:nth-child(3) .video-rank {
-    color: var(--accent);
+  .heat-dots {
+    font-size: 0.82rem;
+    letter-spacing: 0.05em;
   }
 
-  .video-thumb {
-    width: 76px;
-    height: 46px;
-    border-radius: 10px;
-    overflow: hidden;
-    flex-shrink: 0;
-    background: var(--bg-surface);
-  }
-
-  .video-thumb img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-    transition: transform var(--transition-normal);
-  }
-
-  .video-card:hover .video-thumb img {
-    transform: scale(1.05);
-  }
-
-  .video-info {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-  }
-
-  .video-title {
-    font-size: 0.8rem;
-    font-weight: 550;
-    color: var(--text);
+  .card-desc {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    line-height: 1.55;
+    font-weight: 450;
     display: -webkit-box;
-    -webkit-line-clamp: 1;
+    -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
-    line-height: 1.4;
+    margin: 0;
   }
 
-  .video-stats {
-    display: flex;
-    gap: 0.7rem;
-    font-size: 0.68rem;
-    color: var(--text-dim);
-    font-weight: 500;
-    font-variant-numeric: tabular-nums;
-  }
-
-  /* ── Tag List ──────────────────────────────────────────────────────── */
-  .tag-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.125rem;
-  }
-
-  .tag-row {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    padding: 0.55rem 0.5rem;
+  .create-btn {
+    margin-top: auto;
+    padding: 0.5rem 0.85rem;
     border-radius: 8px;
-    transition: background var(--transition-fast);
-    cursor: pointer;
-  }
-
-  .tag-row:hover { background: var(--bg-hover); }
-
-  .tag-rank {
-    width: 22px;
-    font-size: 0.72rem;
-    font-weight: 750;
-    color: var(--text-dim);
-    text-align: center;
-    flex-shrink: 0;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .tag-rank.top3 { color: var(--accent); }
-
-  .tag-name {
-    flex: 1;
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--text);
-  }
-
-  .tag-posts {
-    font-size: 0.72rem;
-    color: var(--text-muted);
-    white-space: nowrap;
-    font-weight: 500;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .tag-trend {
+    border: 1px solid rgba(134, 120, 191, 0.25);
+    background: rgba(134, 120, 191, 0.08);
+    color: var(--accent);
     font-size: 0.78rem;
-    font-weight: 750;
-    width: 20px;
+    font-weight: 620;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.2s ease;
     text-align: center;
-    color: var(--text-dim);
   }
 
-  .tag-trend.trend-up { color: var(--success); }
-  .tag-trend.trend-down { color: var(--error); }
+  .create-btn:hover {
+    background: var(--accent-gradient);
+    color: var(--accent-text);
+    border-color: transparent;
+    box-shadow: 0 2px 10px rgba(134, 120, 191, 0.25);
+  }
+
+  /* ── Raw content ─────────────────────────────────────────────── */
+  .raw-content {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--card-radius, 14px);
+    padding: 1.5rem;
+    box-shadow: var(--shadow-sm);
+    backdrop-filter: var(--card-blur);
+    -webkit-backdrop-filter: var(--card-blur);
+  }
 </style>
