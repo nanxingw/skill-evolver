@@ -97,3 +97,50 @@ export function createWorkWs(
     },
   };
 }
+
+export function createTrendWs(
+  sessionKey: string,
+  onEvent: (event: string, data: any) => void
+): { close: () => void } {
+  let ws: WebSocket | null = null;
+  let closed = false;
+
+  function connect() {
+    if (closed) return;
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    ws = new WebSocket(
+      `${proto}//${location.host}/ws/browser/${encodeURIComponent(sessionKey)}`
+    );
+
+    ws.onmessage = (msg) => {
+      try {
+        const { event, data } = JSON.parse(msg.data);
+        onEvent(event, data);
+        // Auto-close on terminal events (no reconnect)
+        if (event === "session_closed" || event === "research_done" || event === "research_error") {
+          closed = true;
+          ws?.close();
+        }
+      } catch {
+        // ignore malformed messages
+      }
+    };
+
+    ws.onclose = () => {
+      // No auto-reconnect for trend sessions
+    };
+
+    ws.onerror = () => {
+      ws?.close();
+    };
+  }
+
+  connect();
+
+  return {
+    close() {
+      closed = true;
+      ws?.close();
+    },
+  };
+}
