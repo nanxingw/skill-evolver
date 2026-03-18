@@ -25,18 +25,6 @@
     return unsub;
   });
 
-  const contentTypes = [
-    { value: "short-video", emoji: "🎬", labelKey: "shortVideo" },
-    { value: "image-text", emoji: "📷", labelKey: "imageText" },
-    { value: "long-video", emoji: "🎥", labelKey: "longVideo" },
-    { value: "livestream", emoji: "📡", labelKey: "livestream" },
-  ];
-
-  const platformOptions = [
-    { value: "xiaohongshu", labelKey: "xiaohongshu" },
-    { value: "douyin", labelKey: "douyin" },
-  ];
-
   function togglePlatform(p: string) {
     if (selectedPlatforms.includes(p)) {
       if (selectedPlatforms.length > 1) {
@@ -49,7 +37,6 @@
 
   function handleCreate() {
     onCreate({ title, type: selectedType, platforms: selectedPlatforms, topicHint });
-    // Reset form
     title = "";
     selectedType = "short-video";
     selectedPlatforms = ["xiaohongshu"];
@@ -69,57 +56,72 @@
     <div class="modal-card">
       <h2 class="modal-title">{tt("newWorkBtn")}</h2>
 
-      <!-- Content Type -->
+      <!-- Content Type: 2 large cards -->
       <div class="form-section">
-        <label class="form-label">{tt("selectType")}</label>
+        <span class="form-label">{tt("selectType")}</span>
         <div class="type-grid">
-          {#each contentTypes as ct}
-            <button
-              class="type-card"
-              class:selected={selectedType === ct.value}
-              onclick={() => selectedType = ct.value}
-            >
-              <span class="type-emoji">{ct.emoji}</span>
-              <span class="type-name">{tt(ct.labelKey)}</span>
-            </button>
-          {/each}
+          <button
+            class="type-card"
+            class:selected={selectedType === "short-video"}
+            onclick={() => selectedType = "short-video"}
+          >
+            <span class="type-icon">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            </span>
+            <span class="type-name">{tt("shortVideo")}</span>
+          </button>
+          <button
+            class="type-card"
+            class:selected={selectedType === "image-text"}
+            onclick={() => selectedType = "image-text"}
+          >
+            <span class="type-icon">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            </span>
+            <span class="type-name">{tt("imageText")}</span>
+          </button>
         </div>
       </div>
 
-      <!-- Platforms -->
+      <!-- Platforms: toggleable chips -->
       <div class="form-section">
-        <label class="form-label">{tt("selectPlatforms")}</label>
+        <span class="form-label">{tt("selectPlatforms")}</span>
         <div class="platform-row">
-          {#each platformOptions as po}
-            <button
-              class="platform-chip"
-              class:selected={selectedPlatforms.includes(po.value)}
-              onclick={() => togglePlatform(po.value)}
-            >
-              {tt(po.labelKey)}
-            </button>
-          {/each}
+          <button
+            class="platform-chip"
+            class:selected={selectedPlatforms.includes("douyin")}
+            onclick={() => togglePlatform("douyin")}
+          >
+            {tt("douyin")}
+          </button>
+          <button
+            class="platform-chip"
+            class:selected={selectedPlatforms.includes("xiaohongshu")}
+            onclick={() => togglePlatform("xiaohongshu")}
+          >
+            {tt("xiaohongshu")}
+          </button>
         </div>
       </div>
 
       <!-- Title -->
       <div class="form-section">
-        <label class="form-label">{tt("resultTitle")}</label>
+        <span class="form-label">{tt("resultTitle")}</span>
         <input
           type="text"
           class="form-input"
           bind:value={title}
-          placeholder={lang === "zh" ? "可选，不填则AI自动生成" : "Optional — AI will generate if empty"}
+          placeholder={tt("titlePlaceholder")}
         />
       </div>
 
       <!-- Topic Hint -->
       <div class="form-section">
-        <label class="form-label">{tt("topicHint")}</label>
+        <span class="form-label">{tt("topicHint")}</span>
         <textarea
           class="form-textarea"
           bind:value={topicHint}
-          placeholder={lang === "zh" ? "告诉AI你想做什么方向的内容..." : "Tell AI what direction you want..."}
+          placeholder={tt("topicHintPlaceholder")}
           rows="3"
         ></textarea>
       </div>
@@ -145,6 +147,12 @@
     justify-content: center;
     z-index: 1000;
     padding: 1rem;
+    animation: fadeIn 0.2s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
 
   .modal-card {
@@ -159,10 +167,16 @@
     box-shadow: var(--shadow-lg);
     backdrop-filter: var(--card-blur);
     -webkit-backdrop-filter: var(--card-blur);
+    animation: scaleIn 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  @keyframes scaleIn {
+    from { opacity: 0; transform: scale(0.96) translateY(8px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
   }
 
   .modal-title {
-    font-size: 1.1rem;
+    font-size: 1.15rem;
     font-weight: 700;
     margin-bottom: 1.5rem;
     letter-spacing: -0.02em;
@@ -180,59 +194,68 @@
     margin-bottom: 0.5rem;
   }
 
+  /* 2-column type cards */
   .type-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 0.5rem;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
   }
 
   .type-card {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.35rem;
-    padding: 0.75rem 0.5rem;
-    border: 1.5px solid var(--border);
-    border-radius: 12px;
+    gap: 0.65rem;
+    padding: 1.25rem 1rem;
+    border: 2px solid var(--border);
+    border-radius: 16px;
     background: var(--bg-surface);
     color: var(--text);
     font-family: inherit;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: all 0.2s ease;
   }
 
   .type-card:hover {
     border-color: var(--text-dim);
     background: var(--bg-hover);
+    transform: translateY(-2px);
   }
 
   .type-card.selected {
     border-color: var(--accent);
     background: var(--accent-soft);
+    box-shadow: 0 0 0 3px rgba(134, 120, 191, 0.1);
   }
 
-  .type-emoji {
-    font-size: 1.5rem;
+  .type-icon {
+    color: var(--text-muted);
+    transition: color 0.2s ease;
+  }
+
+  .type-card.selected .type-icon {
+    color: var(--accent);
   }
 
   .type-name {
-    font-size: 0.72rem;
-    font-weight: 600;
+    font-size: 0.85rem;
+    font-weight: 650;
   }
 
+  /* Platform chips */
   .platform-row {
     display: flex;
     gap: 0.5rem;
   }
 
   .platform-chip {
-    padding: 0.45rem 1rem;
+    padding: 0.5rem 1.25rem;
     border: 1.5px solid var(--border);
     border-radius: 9999px;
     background: var(--bg-surface);
     color: var(--text);
     font-family: inherit;
-    font-size: 0.82rem;
+    font-size: 0.85rem;
     font-weight: 550;
     cursor: pointer;
     transition: all 0.15s ease;
@@ -290,11 +313,11 @@
     display: flex;
     justify-content: flex-end;
     gap: 0.5rem;
-    margin-top: 0.5rem;
+    margin-top: 0.75rem;
   }
 
   .btn-cancel {
-    padding: 0.5rem 1.25rem;
+    padding: 0.55rem 1.25rem;
     border: 1px solid var(--border);
     border-radius: 10px;
     background: var(--bg-surface);
@@ -312,7 +335,7 @@
   }
 
   .btn-create {
-    padding: 0.5rem 1.5rem;
+    padding: 0.55rem 1.75rem;
     border: none;
     border-radius: 10px;
     background: var(--accent-gradient);
@@ -329,11 +352,5 @@
     filter: brightness(1.1);
     box-shadow: 0 6px 22px rgba(134, 120, 191, 0.35);
     transform: translateY(-1px);
-  }
-
-  @media (max-width: 480px) {
-    .type-grid {
-      grid-template-columns: repeat(2, 1fr);
-    }
   }
 </style>
