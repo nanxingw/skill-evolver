@@ -199,6 +199,30 @@ apiRoutes.get("/api/works/:id/assets/*", async (c) => {
   }
 });
 
+// POST /api/works/:id/assets/upload — upload file to work assets
+apiRoutes.post("/api/works/:id/assets/upload", async (c) => {
+  const workId = c.req.param("id");
+  const body = await c.req.parseBody();
+  const file = body.file;
+  const subdir = (body.subdir as string) ?? "images";
+
+  if (!(file instanceof File)) {
+    return c.json({ error: "No file provided" }, 400);
+  }
+
+  const assetsDir = join(homedir(), ".autoviral", "works", workId, "assets", subdir);
+  await mkdir(assetsDir, { recursive: true });
+  const filePath = join(assetsDir, file.name);
+  const buffer = Buffer.from(await file.arrayBuffer());
+  await writeFile(filePath, buffer);
+
+  return c.json({
+    success: true,
+    path: `${subdir}/${file.name}`,
+    url: `/api/works/${workId}/assets/${subdir}/${encodeURIComponent(file.name)}`,
+  });
+});
+
 // GET /api/analytics — aggregate metrics from all works
 apiRoutes.get("/api/analytics", async (c) => {
   try {
