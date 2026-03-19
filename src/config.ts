@@ -13,7 +13,12 @@ export interface Config {
   openrouter?: { apiKey: string };
   research: { enabled: boolean; schedule: string; platforms: string[] };
   interests?: string[];
-  memory?: { apiKey: string; userId: string };
+  memory?: { apiKey: string; userId: string; syncEnabled: boolean };
+  analytics?: {
+    douyinUrl: string;
+    collectInterval: number;
+    enabled: boolean;
+  };
 }
 
 const CONFIG_DIR = join(homedir(), ".autoviral");
@@ -29,6 +34,7 @@ export function getDefaultConfig(): Config {
     jimeng: { accessKey: "", secretKey: "" },
     research: { enabled: true, schedule: "0 9,21 * * *", platforms: ["douyin", "xiaohongshu"] },
     interests: [],
+    analytics: { douyinUrl: "", collectInterval: 60, enabled: true },
   };
 }
 
@@ -54,7 +60,10 @@ export async function loadConfig(): Promise<Config> {
     if (process.env.OPENROUTER_API_KEY) {
       config.openrouter = { apiKey: process.env.OPENROUTER_API_KEY };
     }
-    if (process.env.EVERMEMOS_API_KEY && config.memory) {
+    if (process.env.EVERMEMOS_API_KEY) {
+      if (!config.memory) {
+        config.memory = { apiKey: "", userId: "autoviral-user", syncEnabled: false };
+      }
       config.memory.apiKey = process.env.EVERMEMOS_API_KEY;
     }
 
