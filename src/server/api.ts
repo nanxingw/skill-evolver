@@ -452,7 +452,9 @@ apiRoutes.post("/api/works/:id/session", async (c) => {
       `目标平台: ${work.platforms.map((p: any) => typeof p === "string" ? p : p.platform).join(", ")}。`,
       work.topicHint ? `选题方向: ${work.topicHint}` : "",
       ``,
-      `当前步骤: "${stepName}"。请开始这个步骤的创作工作。`,
+      `当前步骤: "${stepName}"。`,
+      `请先向用户确认：简要说明这个步骤你将做什么，询问用户是否有特定方向或要求，等用户确认后再开始工作。`,
+      `不要直接开始执行，先和用户沟通。`,
     ].filter(Boolean).join("\n");
 
     const config = await loadConfig();
@@ -530,6 +532,53 @@ apiRoutes.post("/api/works/:id/step/:step", async (c) => {
     return c.json({ triggered: true, workId: id, step });
   } catch (err) {
     return c.json({ error: err instanceof Error ? err.message : "Step trigger error" }, 500);
+  }
+});
+
+// POST /api/works/:id/pipeline/advance — agent calls this to advance pipeline
+apiRoutes.post("/api/works/:id/pipeline/advance", async (c) => {
+  const id = c.req.param("id");
+  try {
+    const body = await c.req.json<{ completedStep: string; nextStep?: string }>().catch(() => ({} as any));
+    const work = await getWork(id);
+    if (!work) return c.json({ error: "Work not found" }, 404);
+
+    const { completedStep, nextStep } = body;
+    if (!completedStep) return c.json({ error: "completedStep is required" }, 400);
+
+    // Mark completed step as done
+    if (work.pipeline[completedStep]) {
+      work.pipeline[completedStep].status = "done";
+      work.pipeline[completedStep].completedAt = new Date().toISOString();
+    }
+
+    // Mark next step as active if provided
+    if (nextStep && work.pipeline[nextStep]) {
+      work.pipeline[nextStep].status = "active";
+      work.pipeline[nextStep].startedAt = new Date().toISOString();
+    }
+
+    await storeUpdateWork(id, { pipeline: work.pipeline });
+
+    // Broadcast pipeline update to browsers via WsBridge
+    if (wsBridge) {
+      const session = wsBridge.getSession(id);
+      if (session) {
+        for (const ws of session.browserSockets) {
+          if (ws.readyState === 1) {
+            ws.send(JSON.stringify({
+              event: "pipeline_updated",
+              data: { workId: id, pipeline: work.pipeline },
+              timestamp: new Date().toISOString(),
+            }));
+          }
+        }
+      }
+    }
+
+    return c.json({ ok: true, pipeline: work.pipeline });
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : "Pipeline advance error" }, 500);
   }
 });
 

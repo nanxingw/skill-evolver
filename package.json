@@ -5,7 +5,7 @@
   "type": "module",
   "bin": {
     "autocode": "dist/index.js",
-    "skill-evolver": "dist/index.js"
+    "autoviral": "dist/index.js"
   },
   "files": [
     "dist/",
@@ -24,7 +24,7 @@
   "keywords": [
     "claude-code",
     "autocode",
-    "skill-evolver",
+    "autoviral",
     "ai",
     "agent",
     "automation",
@@ -41,6 +41,7 @@
     "js-yaml": "^4.1.0",
     "marked": "^17.0.4",
     "node-cron": "^3.0.0",
+    "playwright": "^1.58.2",
     "ws": "^8.0.0"
   },
   "devDependencies": {

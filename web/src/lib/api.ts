@@ -119,16 +119,16 @@ export async function createWorkApi(input: {
   });
 }
 
+export async function deleteWorkApi(id: string): Promise<void> {
+  await request<{ deleted: boolean }>(`/api/works/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
 export async function updateWorkApi(id: string, updates: Partial<Work>): Promise<Work> {
   return request<Work>(`/api/works/${encodeURIComponent(id)}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(updates),
   });
-}
-
-export async function deleteWorkApi(id: string): Promise<void> {
-  await request<{ deleted: boolean }>(`/api/works/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
 export async function startWorkSession(id: string): Promise<{ status: string; workId: string; step?: string }> {

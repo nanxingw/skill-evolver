@@ -6,8 +6,8 @@ import { homedir } from "node:os";
 import { exec, spawn } from "node:child_process";
 import { stopResearchScheduler } from "./research-scheduler.js";
 
-const PID_FILE = join(homedir(), ".skill-evolver", "daemon.pid");
-const LOG_FILE = join(homedir(), ".skill-evolver", "daemon.log");
+const PID_FILE = join(homedir(), ".autoviral", "daemon.pid");
+const LOG_FILE = join(homedir(), ".autoviral", "daemon.log");
 
 async function readPid(): Promise<number | null> {
   try {
@@ -48,7 +48,7 @@ export function runCLI(): void {
       }
 
       // If not --foreground and not already a spawned daemon, fork to background
-      if (!opts.foreground && !process.env.__SKILL_EVOLVER_DAEMON) {
+      if (!opts.foreground && !process.env.__AUTOVIRAL_DAEMON) {
         await mkdir(getConfigDir(), { recursive: true });
         const fs = await import("node:fs");
         const logFd = fs.openSync(LOG_FILE, "a");
@@ -56,7 +56,7 @@ export function runCLI(): void {
         const child = spawn(process.execPath, [entryScript, "start", "--foreground"], {
           detached: true,
           stdio: ["ignore", logFd, logFd],
-          env: { ...process.env, __SKILL_EVOLVER_DAEMON: "1" },
+          env: { ...process.env, __AUTOVIRAL_DAEMON: "1" },
         });
         child.unref();
         fs.closeSync(logFd);

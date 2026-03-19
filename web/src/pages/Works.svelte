@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { t, getLanguage, subscribe } from "../lib/i18n";
-  import { fetchWorks, type WorkSummary } from "../lib/api";
+  import { fetchWorks, deleteWorkApi, type WorkSummary } from "../lib/api";
 
   let {
     onOpenStudio,
@@ -72,6 +72,15 @@
     "linear-gradient(135deg, #fa709a 0%, #fee140 100%)",
     "linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)",
   ];
+
+  async function handleDelete(e: MouseEvent, workId: string, title: string) {
+    e.stopPropagation(); // Don't open studio
+    if (!confirm(lang === "zh" ? `确定删除「${title}」？` : `Delete "${title}"?`)) return;
+    try {
+      await deleteWorkApi(workId);
+      works = works.filter(w => w.id !== workId);
+    } catch { /* ignore */ }
+  }
 
   function cardGradient(id: string): string {
     let hash = 0;
@@ -148,7 +157,8 @@
     <!-- Gallery grid -->
     <div class="gallery-grid">
       {#each filteredWorks as w}
-        <button class="work-card" onclick={() => onOpenStudio(w.id)}>
+        <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+        <div class="work-card" onclick={() => onOpenStudio(w.id)}>
           <!-- Cover -->
           <div class="card-cover">
             {#if w.coverImage}
@@ -169,7 +179,12 @@
 
           <!-- Info -->
           <div class="card-body">
-            <h3 class="card-title">{w.title}</h3>
+            <div class="card-title-row">
+              <h3 class="card-title">{w.title}</h3>
+              <button class="delete-btn" onclick={(e) => handleDelete(e, w.id, w.title)} title={lang === "zh" ? "删除" : "Delete"}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              </button>
+            </div>
             <div class="card-meta">
               <span class="type-badge">{typeLabel(w.type)}</span>
               {#if w.platforms?.length}
@@ -180,7 +195,7 @@
             </div>
             <span class="card-date">{new Date(w.updatedAt).toLocaleDateString()}</span>
           </div>
-        </button>
+        </div>
       {/each}
     </div>
   {/if}
@@ -458,6 +473,13 @@
     gap: 0.35rem;
   }
 
+  .card-title-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.4rem;
+  }
+
   .card-title {
     font-size: 0.9rem;
     font-weight: 650;
@@ -467,6 +489,27 @@
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .delete-btn {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 0.25rem;
+    border-radius: 6px;
+    transition: all 0.15s;
+    flex-shrink: 0;
+    opacity: 0;
+  }
+
+  .work-card:hover .delete-btn { opacity: 1; }
+
+  .delete-btn:hover {
+    color: var(--error);
+    background: rgba(251, 113, 133, 0.1);
   }
 
   .card-meta {

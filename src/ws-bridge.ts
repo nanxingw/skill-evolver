@@ -151,6 +151,18 @@ export class WsBridge {
 - 生视频：调用 curl http://localhost:${port}/api/generate/video 生成视频
 - 合成：使用ffmpeg命令剪辑视频（拼接片段+字幕+配乐+转场）
 - 公共素材：通过 curl http://localhost:${port}/api/shared-assets 查看可用的公共素材（人物、配乐等）
+- 流水线管理：调用 curl -X POST http://localhost:${port}/api/works/${work.id}/pipeline/advance 更新流水线状态
+
+## 流水线（Pipeline）
+作品ID：${work.id}
+流水线步骤：${steps.map(([key, s]) => `${key}(${s.name}): ${s.status}`).join(" → ")}
+
+**重要：你必须主动管理流水线状态。** 每次回答用户之前，根据对话上下文判断当前阶段是否已经完成、是否需要推进到下一步。
+- 当你判断当前阶段的工作已经完成（例如调研报告已输出、规划方案已确认），**立即调用** pipeline/advance API 更新状态：
+  curl -X POST http://localhost:${port}/api/works/${work.id}/pipeline/advance -H "Content-Type: application/json" -d '{"completedStep":"当前步骤key","nextStep":"下一步骤key"}'
+- 当用户明确要求进入下一阶段时，同样调用此API。
+- 不要等用户来点按钮，你自己判断并更新。
+- 不要在工作未完成时提前推进。
 
 ## 当前项目workspace
 ${workspacePath}
@@ -168,7 +180,6 @@ ${memoryContext}
 - 短视频制作：先生成首帧图片→用首帧图生成视频片段→ffmpeg剪辑合成
 - 可随时引用公共素材库中的人物、配乐等素材
 - 只支持抖音和小红书平台
-- 当收到阶段切换指令（如"进入规划阶段"），立即确认切换并开始新阶段的工作
 - 不要在未经用户确认的情况下自动跳转到下一阶段`;
   }
 

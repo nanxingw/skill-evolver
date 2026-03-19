@@ -12,6 +12,7 @@
     workTitle = "",
     onStepClick,
     onNextStep,
+    canAdvance = false,
   }: {
     pipeline: Record<string, PipelineStep>;
     contentType: string;
@@ -21,6 +22,7 @@
     workTitle?: string;
     onStepClick: (stepKey: string) => void;
     onNextStep?: (stepKey: string) => void;
+    canAdvance?: boolean;
   } = $props();
 
   let lang = $state(getLanguage());
@@ -139,7 +141,7 @@
     </div>
   </div>
 
-  {#if nextPendingStep && onNextStep}
+  {#if nextPendingStep && onNextStep && canAdvance}
     <div class="next-step-bar">
       <button class="next-step-btn" onclick={() => onNextStep!(nextPendingStep!)}>
         {pipeline[nextPendingStep]?.name ?? nextPendingStep}

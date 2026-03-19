@@ -34,6 +34,7 @@
   function isImage(name: string) { return /\.(png|jpe?g|webp|gif|svg)$/i.test(name); }
   function isVideo(name: string) { return /\.(mp4|mov|webm|avi)$/i.test(name); }
   function isMarkdown(name: string) { return /\.md$/i.test(name); }
+  function isText(name: string) { return /\.(txt|json|yaml|yml)$/i.test(name); }
 
   function classifyFile(name: string): AssetFile["group"] {
     if (name.startsWith("output/") || name.startsWith("output\\")) return "output";
@@ -62,7 +63,7 @@
         name: name.split("/").pop() ?? name,
         path: name,
         ext: name.split(".").pop()?.toLowerCase() ?? "",
-        url: `/api/works/${encodeURIComponent(workId)}/assets/${encodeURIComponent(name)}`,
+        url: `/api/works/${encodeURIComponent(workId)}/assets/${name.split("/").map(encodeURIComponent).join("/")}`,
         group: classifyFile(name),
       }));
     } catch {
@@ -211,7 +212,7 @@
                   </div>
                   <span class="file-name">{file.name}</span>
                 </div>
-              {:else if isMarkdown(file.name)}
+              {:else if isMarkdown(file.name) || isText(file.name)}
                 <button class="md-item" onclick={() => openMdPreview(file)}>
                   <span class="md-icon">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
@@ -255,6 +256,13 @@
                 </div>
                 <span class="file-name">{file.name}</span>
               </div>
+            {:else if isMarkdown(file.name) || isText(file.name)}
+              <button class="md-item" onclick={() => openMdPreview(file)}>
+                <span class="md-icon">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                </span>
+                <span class="file-name">{file.name}</span>
+              </button>
             {:else}
               <a class="file-item" href={file.url} download={file.name}>
                 <span class="file-name">{file.name}</span>

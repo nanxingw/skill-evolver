@@ -105,7 +105,7 @@ async function writeWorkFile(work: Work): Promise<void> {
   const dir = workDir(work.id);
   await mkdir(dir, { recursive: true });
   await mkdir(assetsDir(work.id), { recursive: true });
-  const raw = yaml.dump(work, { lineWidth: -1 });
+  const raw = yaml.dump(work, { lineWidth: -1, sortKeys: false });
   await writeFile(workFilePath(work.id), raw, "utf-8");
 }
 
@@ -254,4 +254,36 @@ export async function listAssets(id: string): Promise<string[]> {
 
 export function getAssetPath(id: string, filename: string): string {
   return join(workDir(id), filename);
+}
+
+/** Save execution history for a pipeline step. */
+export async function saveStepHistory(id: string, stepKey: string, data: unknown): Promise<void> {
+  const stepsDir = join(workDir(id), "steps");
+  await mkdir(stepsDir, { recursive: true });
+  await writeFile(join(stepsDir, `${stepKey}.json`), JSON.stringify(data, null, 2), "utf-8");
+}
+
+/** Load execution history for a pipeline step. */
+export async function loadStepHistory(id: string, stepKey: string): Promise<unknown | null> {
+  try {
+    const raw = await readFile(join(workDir(id), "steps", `${stepKey}.json`), "utf-8");
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+/** Save full conversation to chat.json (single file per work). */
+export async function saveWorkChat(id: string, data: unknown): Promise<void> {
+  await writeFile(join(workDir(id), "chat.json"), JSON.stringify(data), "utf-8");
+}
+
+/** Load full conversation from chat.json. */
+export async function loadWorkChat(id: string): Promise<unknown | null> {
+  try {
+    const raw = await readFile(join(workDir(id), "chat.json"), "utf-8");
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
 }

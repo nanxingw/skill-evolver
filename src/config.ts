@@ -15,7 +15,7 @@ export interface Config {
   memory?: { apiKey: string; userId: string };
 }
 
-const CONFIG_DIR = join(homedir(), ".skill-evolver");
+const CONFIG_DIR = join(homedir(), ".autoviral");
 const CONFIG_PATH = join(CONFIG_DIR, "config.yaml");
 
 /** Base data directory for works, trends, etc. */
