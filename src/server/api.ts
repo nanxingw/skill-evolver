@@ -253,6 +253,25 @@ apiRoutes.get("/api/shared-assets/:category/:file", async (c) => {
   }
 });
 
+// GET /api/interests — 获取用户兴趣列表
+apiRoutes.get("/api/interests", async (c) => {
+  const config = await loadConfig();
+  return c.json({ interests: config.interests ?? [] });
+});
+
+// PUT /api/interests — 更新用户兴趣列表
+apiRoutes.put("/api/interests", async (c) => {
+  try {
+    const body = await c.req.json<{ interests: string[] }>();
+    const current = await loadConfig();
+    const interests = body.interests ?? [];
+    await saveConfig({ ...current, interests });
+    return c.json({ success: true, interests });
+  } catch (err) {
+    return c.json({ error: "Failed to save interests" }, 500);
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Trend Research via Claude CLI
 // ---------------------------------------------------------------------------
