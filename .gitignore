@@ -13,3 +13,4 @@ logs/
 docs/superpowers/specs/AccessKey.txt
 .env
 ..bfg-report/
+.superpowers/
