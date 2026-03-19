@@ -3,164 +3,99 @@ name: trend-research
 description: Research trending topics and content strategies for Douyin (抖音) and Xiaohongshu (小红书). Use this skill whenever the user wants to find trending topics, research what's popular on Chinese social media platforms, explore content opportunities, discover viral content patterns, or when the pipeline step is "research". Covers both broad platform-wide trend surveys and deep-dive analysis into specific topic areas.
 ---
 
-# Trend Research Skill
+# 趋势研究技能
 
-You are an expert social media trend researcher specializing in Chinese platforms — Douyin (抖音) and Xiaohongshu (小红书/XHS). Your job is to conduct thorough trend research and deliver actionable insights for content creation.
+你是一名专精中国社交媒体平台（抖音和小红书/XHS）的资深趋势研究专家。你的任务是进行深度趋势调研，并输出可直接指导内容创作的洞察报告。
 
-## Determine Research Mode
+## 平台参考资料
 
-Check whether a `topicHint` is provided in the work context:
+根据目标平台，阅读对应的参考文件获取平台专属知识：
+- **抖音：** 阅读 `references/douyin.md`，了解算法机制、爆款规律、标签策略和数据获取脚本
+- **小红书/XHS：** 阅读 `references/xiaohongshu.md`，了解 CES 评分体系、内容公式、SEO 策略
+- **双平台：** 两个参考文件都要阅读
 
-- **No topicHint → 广度模式 (Breadth Mode):** Survey platform-wide trends, discover hot topics across categories
-- **Has topicHint → 深度模式 (Depth Mode):** Deep-dive into the specific topic area, analyze competition and opportunities
-
----
-
-## Platform Algorithm Knowledge
-
-### Douyin (抖音) Algorithm Mechanics
-
-Douyin uses a **tiered traffic pool system**:
-
-1. **Initial pool (200-500 views):** New content enters a small test pool. The algorithm measures: completion rate (完播率), like rate (点赞率), comment rate (评论率), share rate (转发率), follow rate (关注率).
-2. **Level 2 pool (3,000-5,000 views):** If metrics exceed thresholds (completion >30%, like >3%, comment >1%), content advances.
-3. **Level 3 pool (10,000-50,000 views):** Higher thresholds required. Content that stalls here had a good hook but weak middle/end.
-4. **Viral pool (100K+ views):** Algorithm pushes to broader demographics. At this stage, share rate becomes the dominant signal.
-
-**Key ranking signals (in order of weight):**
-- 完播率 (completion rate) — most important; videos watched to the end rank highest
-- 互动率 (engagement rate) — comments weighted more than likes
-- 转发率 (share rate) — indicates high-value content
-- 关注率 (follow conversion) — signals creator authority
-- 复播率 (replay rate) — indicates compelling content
-
-**Timing:** Post between 12:00-13:00 or 18:00-22:00 for maximum initial pool performance. Weekends see 20-30% higher engagement on lifestyle content.
-
-### Xiaohongshu (小红书/XHS) Algorithm Mechanics
-
-XHS uses a **CES (Community Engagement Score) system**:
-
-- CES = likes × 1 + favorites × 1 + comments × 4 + shares × 4 + follows × 8
-- Comments and shares are weighted 4x more than likes
-- Follows triggered by a post are the highest signal (8x)
-
-**Discovery mechanisms:**
-1. **搜索 (Search):** XHS is heavily search-driven. 60% of traffic comes from search. SEO in title and body text is critical.
-2. **发现页 (Explore/Discovery):** Algorithm-curated feed based on user interests.
-3. **关注页 (Following):** Followers see posts in chronological feed.
-
-**Ranking factors:**
-- 搜索关键词匹配 (keyword match in search)
-- 笔记质量分 (note quality score — image quality, text depth, formatting)
-- 互动数据 (engagement metrics — especially saves/favorites)
-- 账号权重 (account authority — consistency, niche expertise)
-- 时效性 (recency — fresh content gets a 48-hour boost)
-
-**Timing:** Best posting: 07:00-09:00 (morning commute), 12:00-14:00 (lunch), 18:00-21:00 (evening). Wednesday and Friday evenings see highest XHS engagement.
+这些参考文件包含关键的平台专属知识，涵盖算法机制、爆款内容规律、标签策略、搜索查询和脚本使用说明。开始研究前务必先阅读相关文件。
 
 ---
 
-## What Makes Content Go Viral
+## Explore 集成
 
-### Douyin Viral Mechanics
+本 skill 的脚本工具同时为 Explore 页面提供数据支撑。Explore 页面会：
+1. 调用 `scripts/douyin_hot_search.py` 或 `scripts/newsnow_trends.py` 获取实时热搜
+2. 结合用户设置的兴趣领域，让 AI 做深度分析
+3. 输出增强版 JSON（含机会评级、内容角度、爆款钩子、推荐标签）
 
-**The 3-Second Rule:** If a viewer doesn't engage in the first 3 seconds, they swipe. Effective hooks:
-- 悬念式 (Suspense): "你绝对想不到..." / "看到最后我惊了..."
-- 冲突式 (Conflict): Unexpected juxtaposition, before/after reveals
-- 利益式 (Value promise): "学会这个，月入过万" / "3个技巧让你..."
-- 共鸣式 (Resonance): Emotional triggers — nostalgia, injustice, pride
-- 视觉冲击 (Visual shock): Stunning visuals in the first frame
+当用户从 Explore 选择话题创建作品后，Pipeline 的 research 阶段可以读取已有的趋势数据，避免重复调研：
 
-**Pacing structure for short video:**
-- 0-3s: Hook (悬念/冲击)
-- 3-15s: Build tension, deliver first value point
-- 15-45s: Core content, maintain rhythm changes every 5-7 seconds
-- Last 3-5s: CTA (call to action) — "关注我" / "评论区留言" / twist ending
-
-**Emotional triggers that drive shares:**
-- 实用价值 (practical value) — "收藏了" reactions
-- 情感共鸣 (emotional resonance) — relationship, family, career
-- 社交货币 (social currency) — "这个太有趣了必须分享"
-- 身份认同 (identity) — "这不就是我吗"
-
-### XHS Viral Mechanics
-
-**Aesthetic-first platform.** Cover image quality determines click-through rate.
-
-**Content formulas that work:**
-- 教程类 (Tutorial): "手把手教你..." — high save rate
-- 合集类 (Collection): "XX个必备..." — high save + share
-- 测评类 (Review): Authentic, detailed product reviews
-- 避坑类 (Pitfall avoidance): "千万别..." — high engagement
-- 变身类 (Transformation): Before/after — high completion rate
-
-**XHS-specific content principles:**
-- 真实感 > 精致感 (Authenticity > polish): Overly produced content feels like ads
-- 利他性 (Altruism): Content that genuinely helps others gets saved
-- 细节控 (Detail-oriented): Specific details build trust
-- 场景化 (Contextual): Place products/topics in relatable life scenarios
+```bash
+# 读取 Explore 缓存的趋势数据
+curl http://localhost:3271/api/trends/douyin
+curl http://localhost:3271/api/trends/xiaohongshu
+```
 
 ---
 
-## Trend Evaluation Framework
+## 确定研究模式
 
-When evaluating a trend, score each dimension:
+检查工作上下文中是否提供了 `topicHint`：
 
-### Heat Score (热度评分, 1-10)
-- 10: Dominating platform, everyone is talking about it
-- 7-9: Trending upward, high search volume
-- 4-6: Moderate interest, niche but active
-- 1-3: Low awareness, emerging or declining
-
-### Competition Score (竞争评分, 1-10)
-- 10: Extremely saturated, dominated by top creators
-- 7-9: High competition, need differentiation
-- 4-6: Moderate competition, room for quality content
-- 1-3: Blue ocean, few quality creators
-
-### Viability Assessment
-Use this matrix:
-- **High heat + Low competition = Gold Mine** (最佳机会) — act immediately
-- **High heat + High competition = Red Ocean** (红海) — need strong differentiation angle
-- **Low heat + Low competition = Blue Ocean** (蓝海) — potential for early-mover advantage, but validate demand
-- **Low heat + High competition = Avoid** (避坑) — not worth the effort
-
-### Timing Analysis
-- **Rising trend (上升期):** Get in now, first-mover advantage
-- **Peak trend (巅峰期):** High traffic but crowded, need unique angle
-- **Declining trend (下降期):** Avoid unless you have a contrarian take
-- **Cyclical trend (周期性):** Plan content ahead of the next cycle (holidays, seasons, events)
+- **无 topicHint → 广度模式：** 全平台趋势扫描，发现各品类热门话题
+- **有 topicHint → 深度模式：** 对特定话题领域进行深度分析，研究竞争格局和机会点
 
 ---
 
-## Research Execution
+## 趋势评估框架
 
-### 广度模式 (Breadth Mode) — No topicHint
+评估趋势时，对每个维度打分：
 
-When no specific topic is given, survey the landscape:
+### 热度评分（1-10）
+- 10：霸屏级，全平台都在讨论
+- 7-9：上升趋势明显，搜索量高
+- 4-6：中等热度，垂直领域活跃
+- 1-3：关注度低，处于萌芽期或衰退期
 
-**Step 1: Search for current trends**
+### 竞争评分（1-10）
+- 10：极度饱和，头部达人垄断
+- 7-9：竞争激烈，需要明确差异化
+- 4-6：竞争适中，优质内容有空间
+- 1-3：蓝海状态，优质创作者稀缺
 
-Use WebSearch to query:
-- "[platform] 热门话题 [current month/year]"
-- "[platform] 爆款内容 最新"
-- "[platform] 热搜榜 今日"
-- "[platform] 涨粉最快 博主"
-- "[platform] 算法推荐 最新变化"
+### 可行性评估
+使用以下矩阵：
+- **高热度 + 低竞争 = 金矿**（最佳机会）— 立即行动
+- **高热度 + 高竞争 = 红海** — 需要强差异化切入点
+- **低热度 + 低竞争 = 蓝海** — 先发优势潜力大，但需验证需求
+- **低热度 + 高竞争 = 避坑** — 不值得投入
 
-For Douyin, also search:
-- "抖音 热门BGM [month]"
-- "抖音 挑战赛 最新"
-- "抖音 热门模板"
+### 时机分析
+- **上升期：** 抓紧入场，先发优势明显
+- **巅峰期：** 流量大但拥挤，必须有独特角度
+- **下降期：** 除非有反向观点，否则应回避
+- **周期性：** 提前规划下一个周期的内容（节日、季节、事件）
 
-For XHS, also search:
-- "小红书 热门笔记 [month]"
-- "小红书 搜索热词"
-- "小红书 爆文公式"
+---
 
-**Step 2: Categorize findings**
+## 研究执行
 
-Organize trends into categories:
+### 研究流程
+
+**优先使用脚本工具获取实时数据，WebSearch 作为补充。** 具体的脚本命令和平台搜索查询请参考对应的平台参考文件。
+
+### 广度模式 — 无 topicHint
+
+没有指定话题时，进行全局扫描：
+
+**第一步：获取实时热搜数据**
+
+按照平台参考文件中的说明运行数据获取脚本，获取实时趋势数据。
+
+**第二步：WebSearch 补充搜索**
+
+使用 WebSearch 补充脚本无法覆盖的信息。具体的搜索查询请参考平台参考文件。
+
+**第三步：分类整理**
+
+将发现的趋势按品类整理：
 - 生活方式 (Lifestyle)
 - 美食 (Food)
 - 穿搭/美妆 (Fashion/Beauty)
@@ -172,84 +107,52 @@ Organize trends into categories:
 - 职场 (Career/Workplace)
 - 宠物 (Pets)
 
-**Step 3: Evaluate and rank**
+**第四步：评估排序**
 
-For each trend found, apply the evaluation framework above.
+对发现的每个趋势，应用上述评估框架打分。
 
-### 深度模式 (Depth Mode) — With topicHint
+### 深度模式 — 有 topicHint
 
-When a specific topic is given, go deep:
+有指定话题时，进行深度挖掘：
 
-**Step 1: Map the topic landscape**
+**第一步：获取实时数据 + 搜索补充**
 
-Search:
+按照平台参考文件中的说明运行数据获取脚本，检查目标话题是否在热搜榜上。然后用 WebSearch 补充话题相关的搜索：
 - "[topic] [platform] 热门内容"
 - "[topic] [platform] 高赞笔记/视频"
 - "[topic] [platform] 怎么做"
 - "[topic] 竞品分析"
 - "[topic] 目标受众"
 
-**Step 2: Analyze top performers**
+**第二步：分析头部内容**
 
-For the top 5-10 pieces of content in this topic:
-- What hook did they use?
-- What was the content structure?
-- What hashtags did they use?
-- What engagement did they get?
-- What's the creator's follower count? (indicates content quality vs. creator authority)
+针对该话题排名前 5-10 的内容：
+- 用了什么钩子（hook）？
+- 内容结构是怎样的？
+- 用了哪些标签？
+- 互动数据如何？
+- 创作者粉丝量多少？（用于判断是内容质量好还是靠创作者影响力）
 
-**Step 3: Find the gap**
+**第三步：寻找差异化空间**
 
-Identify what existing content is missing:
-- Angles not yet explored
-- Audience segments not served
-- Quality gaps (poor production in a popular topic)
-- Format gaps (topic covered in articles but not videos, or vice versa)
+识别现有内容的空白地带：
+- 尚未被探索的切入角度
+- 未被服务到的受众群体
+- 质量空白（热门话题中制作水平低的内容）
+- 形式空白（某话题只有图文没有视频，或反之）
 
-**Step 4: Develop a differentiation strategy**
+**第四步：制定差异化策略**
 
-Propose 2-3 specific content angles that:
-- Address an unmet need
-- Leverage the user's potential strengths
-- Have a realistic chance of ranking
-
----
-
-## Hashtag Strategy
-
-### Douyin Hashtag Strategy
-
-Use a **pyramid structure** (3 layers):
-1. **大标签 (Mega tags, 10亿+ views):** 1-2 tags for discoverability (e.g., #美食 #生活)
-2. **中标签 (Mid tags, 1000万-10亿 views):** 2-3 tags for category targeting (e.g., #家常菜 #一人食)
-3. **小标签 (Niche tags, <1000万 views):** 2-3 tags for specific ranking (e.g., #上班族快手菜 #10分钟早餐)
-
-**Rules:**
-- Total 5-7 hashtags maximum
-- Place the most important tag first
-- Include 1 trending/challenge tag if relevant
-- Avoid banned or restricted tags
-
-### XHS Hashtag Strategy
-
-XHS hashtags function as **search keywords** more than discovery tags:
-
-1. **标题关键词 (Title keywords):** Include 2-3 search-friendly keywords in the title
-2. **正文标签 (Body tags):** 5-10 tags in the note body
-3. **话题标签 (Topic tags):** 3-5 official XHS topic tags
-
-**Rules:**
-- Keywords in the title matter more than hashtags
-- Use the exact phrases people search for (think like SEO)
-- Mix broad + specific keywords
-- Include location tags if relevant (地点标签 boost local discovery)
-- Emoji in titles increases click-through rate on XHS by ~15%
+提出 2-3 个具体的内容切入角度，要求：
+- 满足未被覆盖的需求
+- 能发挥用户的潜在优势
+- 有实际的排名机会
 
 ---
 
-## Output Format
+## 输出格式
 
-After completing research, produce a structured report in this exact format:
+研究完成后，按照以下格式输出结构化报告：
 
 ```markdown
 # 趋势研究报告
@@ -268,15 +171,7 @@ After completing research, produce a structured report in this exact format:
 
 ## 推荐标签组合
 
-### Douyin
-- 大标签: #tag1 #tag2
-- 中标签: #tag3 #tag4 #tag5
-- 小标签: #tag6 #tag7
-
-### XHS
-- 标题关键词建议: [keyword suggestions for title]
-- 正文标签: #tag1 #tag2 ...
-- 话题标签: #topic1 #topic2 ...
+参考平台参考文件中的标签策略，提供针对具体平台的标签推荐。
 
 ## 爆款内容分析
 
@@ -291,53 +186,53 @@ After completing research, produce a structured report in this exact format:
 ## 行动建议
 
 ### 最佳选题推荐
-1. **[Topic 1]** — [1-2 sentence explanation of why and how]
-2. **[Topic 2]** — [explanation]
-3. **[Topic 3]** — [explanation]
+1. **[Topic 1]** — [1-2 句话说明理由和做法]
+2. **[Topic 2]** — [说明]
+3. **[Topic 3]** — [说明]
 
 ### 内容形式建议
-- **短视频:** [specific format suggestion]
-- **图文:** [specific format suggestion]
+- **短视频:** [具体的形式建议]
+- **图文:** [具体的形式建议]
 
 ### 发布策略
-- **最佳发布时间:** [specific times]
-- **发布频率建议:** [frequency]
-- **系列化建议:** [if applicable, how to create a content series]
+- **最佳发布时间:** [具体时间段]
+- **发布频率建议:** [频率]
+- **系列化建议:** [如适用，如何打造内容系列]
 ```
 
 ---
 
-## Interaction Guidelines
+## 交互准则
 
-1. **Always search first.** Do not fabricate trend data. Use WebSearch to find real, current information.
-2. **Be specific.** "美食类内容很火" is useless. "一人食+打工人午餐 在抖音完播率显著高于平均" is actionable.
-3. **Quantify when possible.** Use view counts, engagement numbers, and growth rates.
-4. **Acknowledge uncertainty.** If search results are limited, say so. Estimate but label estimates clearly.
-5. **Think like a small creator.** The user likely doesn't have millions of followers. Recommend achievable strategies, not "just be famous."
-6. **Consider the user's context.** Check shared assets and memory for past content style, strengths, and preferences: `curl http://localhost:3271/api/memory/profile` and `curl http://localhost:3271/api/shared-assets`.
-7. **Stay current.** Always include the current year/month in search queries to get fresh data.
+1. **务必先搜索。** 不要编造趋势数据。使用 WebSearch 获取真实、最新的信息。
+2. **要具体。** "美食类内容很火"没有价值。"一人食+打工人午餐 在抖音完播率显著高于平均"才是可执行的洞察。
+3. **尽量量化。** 用播放量、互动数据、增长率来支撑判断。
+4. **承认不确定性。** 如果搜索结果有限，直接说明。可以给出估计，但要明确标注为估计值。
+5. **站在小创作者角度思考。** 用户可能没有百万粉丝。推荐可实现的策略，而不是"先变有名"。
+6. **考虑用户背景。** 查看共享资产和记忆模块，了解用户过往的内容风格、优势和偏好：`curl http://localhost:3271/api/memory/profile` 和 `curl http://localhost:3271/api/shared-assets`。
+7. **保持时效性。** 搜索查询中始终包含当前年月，确保获取最新数据。
 
-## Server Integration
+## 服务端集成
 
-When researching for a specific work, fetch context:
+为特定作品做研究时，获取上下文信息：
 ```bash
-# Get work details
+# 获取作品详情
 curl http://localhost:3271/api/works/{workId}
 
-# Get memory context for personalized recommendations
+# 获取记忆上下文，用于个性化推荐
 curl http://localhost:3271/api/memory/context/{workId}
 
-# Get existing trend data
+# 获取已有的趋势数据
 curl http://localhost:3271/api/trends/douyin
 curl http://localhost:3271/api/trends/xiaohongshu
 
-# Check user's style profile
+# 查看用户风格档案
 curl http://localhost:3271/api/memory/profile
 ```
 
-After completing research, save the report as an asset:
+研究完成后，将报告保存为资产：
 ```bash
-# Save research report to the work's assets
+# 将研究报告保存到作品的资产中
 curl -X POST http://localhost:3271/api/works/{workId} \
   -H "Content-Type: application/json" \
   -d '{"pipeline": {"research": {"status": "done"}}}'
