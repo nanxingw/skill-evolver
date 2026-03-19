@@ -12,3 +12,4 @@ logs/
 # Sensitive keys
 docs/superpowers/specs/AccessKey.txt
 .env
+..bfg-report/

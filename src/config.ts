@@ -42,6 +42,12 @@ export async function loadConfig(): Promise<Config> {
     const config: Config = { ...getDefaultConfig(), ...parsed };
 
     // .env overrides
+    if (process.env.JIMENG_ACCESS_KEY) {
+      config.jimeng.accessKey = process.env.JIMENG_ACCESS_KEY;
+    }
+    if (process.env.JIMENG_SECRET_KEY) {
+      config.jimeng.secretKey = process.env.JIMENG_SECRET_KEY;
+    }
     if (process.env.OPENROUTER_API_KEY) {
       config.openrouter = { apiKey: process.env.OPENROUTER_API_KEY };
     }
