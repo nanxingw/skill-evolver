@@ -187,6 +187,13 @@
             break;
           case "research_done":
             researchPhase = "done";
+            // Capture report from research_done or fall back to streamed text
+            if (data.result && !reportText) {
+              reportText = data.result;
+            }
+            if (!reportText && streamText) {
+              reportText = streamText;
+            }
             progressLines = [...progressLines, {
               type: "done",
               text: "调研完成",
@@ -196,6 +203,7 @@
               researchPhase = "idle";
               progressLines = [];
               streamText = "";
+              // NOTE: reportText is intentionally NOT cleared — it persists for "查看报告"
               loadTrends();
             }, 1200);
             break;

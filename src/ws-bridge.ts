@@ -585,10 +585,13 @@ ${memoryContext}
       session.cliProcess = undefined;
       session.idle = true;
       if (session.workId.startsWith("trends_")) {
+        // Include the accumulated turn text so frontend can show the full report
+        const lastAssistant = session.messageHistory.filter(m => m.role === "assistant").pop();
+        const resultForReport = lastAssistant?.text ?? turnText ?? "";
         this.broadcastToBrowsers(session.workId, {
           event: code === 0 ? "research_done" : "research_error",
           data: code === 0
-            ? { platform: session.workId.split("_")[1] ?? "unknown" }
+            ? { platform: session.workId.split("_")[1] ?? "unknown", result: resultForReport }
             : { message: `CLI exited with code ${code}` },
         });
         this.cleanupTrendSession(session.workId);
