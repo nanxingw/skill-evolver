@@ -96,11 +96,24 @@ apiRoutes.put("/api/config", async (c) => {
 // Work API
 // ---------------------------------------------------------------------------
 
-// GET /api/works
+// GET /api/works — list works with cover image from first asset
 apiRoutes.get("/api/works", async (c) => {
   try {
     const works = await listWorks();
-    return c.json({ works });
+    // Attach coverImage: first image asset found for each work
+    const enriched = await Promise.all(works.map(async (w) => {
+      try {
+        const assets = await listAssets(w.id);
+        const firstImage = assets.find((a: string) =>
+          /\.(png|jpe?g|webp|gif)$/i.test(a) && !a.includes("output/")
+        );
+        if (firstImage) {
+          return { ...w, coverImage: `/api/works/${w.id}/assets/${firstImage.split("/").map(encodeURIComponent).join("/")}` };
+        }
+      } catch {}
+      return w;
+    }));
+    return c.json({ works: enriched });
   } catch {
     return c.json({ works: [] });
   }
