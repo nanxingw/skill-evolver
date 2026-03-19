@@ -3,6 +3,7 @@
   import MarkdownBlock from "../components/MarkdownBlock.svelte";
   import { createTrendWs } from "../lib/ws";
   import ResearchProgress from "../components/ResearchProgress.svelte";
+  import InterestTags from "../components/InterestTags.svelte";
 
   type Platform = "douyin" | "xiaohongshu";
 
@@ -10,9 +11,15 @@
     title: string;
     heat: number;          // 1-5
     competition: string;   // 低/中/高
+    opportunity?: string;  // 金矿/蓝海/红海
     description: string;
+    tags?: string[];       // 推荐标签
+    contentAngles?: string[]; // 内容切入角度
+    exampleHook?: string;  // 爆款钩子示例
+    category?: string;     // 所属领域
   }
 
+  let interests: string[] = $state([]);
   let activePlatform: Platform = $state("douyin");
   let loading = $state(false);
   let directions: TrendDirection[] = $state([]);
@@ -29,6 +36,25 @@
   let progressLines: ProgressLine[] = $state([]);
   let researchPhase: "idle" | "searching" | "analyzing" | "done" | "error" = $state("idle");
 
+  async function loadInterests() {
+    try {
+      const res = await fetch("/api/interests");
+      if (res.ok) {
+        const data = await res.json();
+        interests = data.interests ?? [];
+      }
+    } catch {}
+  }
+
+  async function saveInterests(updated: string[]) {
+    interests = updated;
+    await fetch("/api/interests", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ interests: updated }),
+    }).catch(() => {});
+  }
+
   function parseTrends(data: any): void {
     // Structured data with topics/directions array
     if (data && typeof data === "object") {
@@ -38,7 +64,12 @@
           title: item.title ?? item.name ?? item.direction ?? "未知方向",
           heat: Math.min(5, Math.max(1, Number(item.heat ?? item.hotness ?? item.score ?? 3))),
           competition: item.competition ?? item.competitionLevel ?? "中",
+          opportunity: item.opportunity ?? "",
           description: item.description ?? item.desc ?? item.summary ?? "",
+          tags: Array.isArray(item.tags) ? item.tags : [],
+          contentAngles: Array.isArray(item.contentAngles) ? item.contentAngles : [],
+          exampleHook: item.exampleHook ?? "",
+          category: item.category ?? "",
         }));
         rawContent = "";
         isStructured = true;
@@ -202,9 +233,16 @@
   }
 
   function dispatchCreate(dir: TrendDirection) {
+    const hint = [
+      dir.title,
+      dir.description,
+      dir.contentAngles?.length ? `切入角度: ${dir.contentAngles.join("; ")}` : "",
+      dir.tags?.length ? `推荐标签: ${dir.tags.map(t => "#" + t).join(" ")}` : "",
+    ].filter(Boolean).join("\n");
+
     const event = new CustomEvent("createWork", {
       bubbles: true,
-      detail: { topicHint: dir.title + " - " + dir.description, platform: activePlatform },
+      detail: { topicHint: hint, platform: activePlatform },
     });
     document.dispatchEvent(event);
   }
@@ -213,6 +251,7 @@
 
   onMount(() => {
     loadTrends();
+    loadInterests();
   });
 </script>
 
@@ -245,6 +284,8 @@
     </button>
   </div>
 
+  <InterestTags {interests} onUpdate={saveInterests} />
+
   <ResearchProgress
     active={researchActive}
     lines={progressLines}
@@ -272,18 +313,61 @@
       {#each directions as dir, i}
         <div class="trend-card" style="animation-delay: {i * 0.05}s">
           <div class="card-header">
-            <h3 class="card-title">{dir.title}</h3>
-            <span class="competition-badge" class:comp-low={dir.competition === "低"} class:comp-mid={dir.competition === "中"} class:comp-high={dir.competition === "高"}>
-              竞争{dir.competition}
-            </span>
+            <div class="title-area">
+              {#if dir.category}
+                <span class="category-badge">{dir.category}</span>
+              {/if}
+              <h3 class="card-title">{dir.title}</h3>
+            </div>
+            <div class="badges">
+              {#if dir.opportunity}
+                <span class="opportunity-badge"
+                  class:opp-gold={dir.opportunity === "金矿"}
+                  class:opp-blue={dir.opportunity === "蓝海"}
+                  class:opp-red={dir.opportunity === "红海"}
+                >{dir.opportunity}</span>
+              {/if}
+              <span class="competition-badge" class:comp-low={dir.competition === "低"} class:comp-mid={dir.competition === "中"} class:comp-high={dir.competition === "高"}>
+                竞争{dir.competition}
+              </span>
+            </div>
           </div>
+
           <div class="heat-row">
             <span class="heat-label">热度</span>
             <span class="heat-dots">{heatDots(dir.heat)}</span>
           </div>
+
           {#if dir.description}
             <p class="card-desc">{dir.description}</p>
           {/if}
+
+          {#if dir.contentAngles && dir.contentAngles.length > 0}
+            <div class="detail-section">
+              <span class="section-label">切入角度</span>
+              <ul class="angles-list">
+                {#each dir.contentAngles as angle}
+                  <li>{angle}</li>
+                {/each}
+              </ul>
+            </div>
+          {/if}
+
+          {#if dir.exampleHook}
+            <div class="detail-section">
+              <span class="section-label">爆款钩子</span>
+              <p class="hook-text">"{dir.exampleHook}"</p>
+            </div>
+          {/if}
+
+          {#if dir.tags && dir.tags.length > 0}
+            <div class="card-tags">
+              {#each dir.tags as tag}
+                <span class="tag-chip">#{tag}</span>
+              {/each}
+            </div>
+          {/if}
+
           <button class="create-btn" onclick={() => dispatchCreate(dir)}>
             以此创建作品
           </button>
@@ -634,5 +718,106 @@
     box-shadow: var(--shadow-sm);
     backdrop-filter: var(--card-blur);
     -webkit-backdrop-filter: var(--card-blur);
+  }
+
+  /* ── Category badge ──────────────────────────────────── */
+  .title-area {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .category-badge {
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: var(--text-dim);
+    letter-spacing: 0.03em;
+  }
+
+  .badges {
+    display: flex;
+    gap: 0.35rem;
+    flex-shrink: 0;
+  }
+
+  /* ── Opportunity badge ───────────────────────────────── */
+  .opportunity-badge {
+    font-size: 0.68rem;
+    font-weight: 650;
+    padding: 0.2rem 0.6rem;
+    border-radius: 6px;
+    white-space: nowrap;
+  }
+
+  .opp-gold {
+    background: rgba(52, 211, 153, 0.12);
+    color: #34d399;
+    border: 1px solid rgba(52, 211, 153, 0.2);
+  }
+
+  .opp-blue {
+    background: rgba(96, 165, 250, 0.12);
+    color: #60a5fa;
+    border: 1px solid rgba(96, 165, 250, 0.2);
+  }
+
+  .opp-red {
+    background: rgba(251, 113, 133, 0.12);
+    color: #fb7185;
+    border: 1px solid rgba(251, 113, 133, 0.2);
+  }
+
+  /* ── Detail sections ─────────────────────────────────── */
+  .detail-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .section-label {
+    font-size: 0.7rem;
+    font-weight: 650;
+    color: var(--text-dim);
+    letter-spacing: 0.03em;
+  }
+
+  .angles-list {
+    margin: 0;
+    padding-left: 1.1rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+
+  .angles-list li {
+    margin-bottom: 0.15rem;
+  }
+
+  .hook-text {
+    font-size: 0.8rem;
+    color: var(--accent);
+    font-style: italic;
+    line-height: 1.5;
+    margin: 0;
+    opacity: 0.85;
+  }
+
+  /* ── Tag chips ───────────────────────────────────────── */
+  .card-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+  }
+
+  .tag-chip {
+    font-size: 0.68rem;
+    font-weight: 550;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-dim);
+    border: 1px solid rgba(255, 255, 255, 0.08);
   }
 </style>
