@@ -235,7 +235,7 @@ ${memoryContext}
 
   /**
    * Create an ephemeral trend research session.
-   * Uses haiku model, auto-kills after 90s, filters CLI events into simplified research events.
+   * Uses sonnet model, auto-kills after 180s, filters CLI events into simplified research events.
    */
   async createTrendSession(sessionKey: string, prompt: string): Promise<WsSession> {
     const existing = this.sessions.get(sessionKey);
@@ -248,24 +248,27 @@ ${memoryContext}
       idle: false,
       browserSockets: existing?.browserSockets ?? new Set(),
       messageHistory: [],
-      model: "haiku",
+      model: "sonnet",
     };
     this.sessions.set(sessionKey, session);
 
     this.spawnCli(session, prompt);
 
-    // Auto-kill after 90s
+    // Auto-kill after 180s
     setTimeout(() => {
       if (session.cliProcess) {
         try { session.cliProcess.kill("SIGTERM"); } catch { /* dead */ }
         session.cliProcess = undefined;
-        this.broadcastToBrowsers(sessionKey, {
-          event: "research_error",
-          data: { message: "搜索超时，请稍后重试" },
+        // Still try to read files even on timeout — agent may have written data.json
+        this.finalizeTrendData(sessionKey).catch(() => {}).finally(() => {
+          this.broadcastToBrowsers(sessionKey, {
+            event: "research_error",
+            data: { message: "搜索超时，请稍后重试" },
+          });
+          this.cleanupTrendSession(sessionKey);
         });
-        this.cleanupTrendSession(sessionKey);
       }
-    }, 90000);
+    }, 180000);
 
     this.broadcastToBrowsers(sessionKey, {
       event: "research_started",
