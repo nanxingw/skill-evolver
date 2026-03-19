@@ -380,6 +380,15 @@
     wsConn = createWorkWs(workId, (event, data) => {
       // Pipeline updates are always processed regardless of view mode
       if (event === "pipeline_updated" && data.pipeline && work) {
+        // Save snapshot of the step that just completed (before switching)
+        const completedKey = Object.keys(data.pipeline).find((k: string) =>
+          data.pipeline[k].status === "done" && work!.pipeline[k]?.status === "active"
+        );
+        if (completedKey) {
+          const stepName = work.pipeline[completedKey]?.name ?? completedKey;
+          saveStepSnapshot(completedKey, stepName);
+        }
+
         work.pipeline = data.pipeline;
         work = { ...work };
         // Update currentStep to the new active step
