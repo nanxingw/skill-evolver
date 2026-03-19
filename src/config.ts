@@ -12,6 +12,7 @@ export interface Config {
   jimeng: { accessKey: string; secretKey: string };
   openrouter?: { apiKey: string };
   research: { enabled: boolean; schedule: string; platforms: string[] };
+  interests?: string[];
   memory?: { apiKey: string; userId: string };
 }
 
@@ -27,6 +28,7 @@ export function getDefaultConfig(): Config {
     model: "opus",
     jimeng: { accessKey: "", secretKey: "" },
     research: { enabled: true, schedule: "0 9,21 * * *", platforms: ["douyin", "xiaohongshu"] },
+    interests: [],
   };
 }
 
@@ -40,6 +42,7 @@ export async function loadConfig(): Promise<Config> {
     const raw = await readFile(CONFIG_PATH, "utf-8");
     const parsed = yaml.load(raw) as Partial<Config> | null;
     const config: Config = { ...getDefaultConfig(), ...parsed };
+    config.interests = config.interests ?? [];
 
     // .env overrides
     if (process.env.JIMENG_ACCESS_KEY) {
