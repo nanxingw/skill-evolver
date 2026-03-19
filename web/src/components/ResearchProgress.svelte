@@ -1,6 +1,8 @@
 <script lang="ts">
+  import MarkdownBlock from "./MarkdownBlock.svelte";
+
   interface ProgressLine {
-    type: "search" | "result" | "analyzing" | "done" | "error";
+    type: "search" | "result" | "analyzing" | "done" | "error" | "text";
     text: string;
   }
 
@@ -8,66 +10,112 @@
     active,
     lines,
     phase,
+    streamText = "",
+    reportText = "",
     onCancel,
   }: {
     active: boolean;
     lines: ProgressLine[];
     phase: "idle" | "searching" | "analyzing" | "done" | "error";
+    streamText?: string;
+    reportText?: string;
     onCancel: () => void;
   } = $props();
+
+  let showReport = $state(false);
 
   function lineIcon(type: string): string {
     if (type === "done" || type === "result") return "\u2713";
     if (type === "error") return "\u2715";
+    if (type === "text") return "\u25CB";
     return "\u2192";
   }
 
   function lineClass(type: string): string {
     if (type === "done" || type === "result") return "line-done";
     if (type === "error") return "line-error";
+    if (type === "text") return "line-text-stream";
     return "line-active";
   }
 </script>
 
-<div class="research-progress" class:expanded={active} class:has-error={phase === "error"}>
+<div class="research-progress" class:expanded={active || phase === "error" || showReport}>
   <div class="progress-inner">
     {#if active || phase === "error"}
-      <div class="progress-header">
-        <div class="header-left">
+      <div class="progress-card">
+        <div class="progress-header">
+          <div class="header-left">
+            {#if phase === "error"}
+              <span class="status-dot dot-error"></span>
+              <span class="header-text">调研失败</span>
+            {:else if phase === "done"}
+              <span class="status-dot dot-done"></span>
+              <span class="header-text">调研完成</span>
+            {:else if phase === "analyzing"}
+              <span class="status-dot dot-pulse"></span>
+              <span class="header-text">AI 正在分析趋势...</span>
+            {:else}
+              <span class="status-dot dot-pulse"></span>
+              <span class="header-text">正在收集热搜数据...</span>
+            {/if}
+          </div>
           {#if phase === "error"}
-            <span class="dot dot-error"></span>
-            <span class="header-text">调研失败</span>
-          {:else if phase === "done"}
-            <span class="dot dot-done"></span>
-            <span class="header-text">调研完成</span>
-          {:else}
-            <span class="dot dot-pulse"></span>
-            <span class="header-text">正在调研趋势...</span>
+            <button class="action-pill" onclick={onCancel}>重试</button>
+          {:else if active}
+            <button class="action-pill cancel" onclick={onCancel}>取消</button>
           {/if}
         </div>
-        {#if phase === "error"}
-          <button class="cancel-btn" onclick={onCancel}>重试</button>
-        {:else if active}
-          <button class="cancel-btn" onclick={onCancel}>取消</button>
-        {/if}
-      </div>
 
-      <div class="lines">
-        {#each lines as line, i (i)}
-          <div class="line {lineClass(line.type)}" style="animation-delay: {i * 0.05}s">
-            <span class="line-icon">{lineIcon(line.type)}</span>
-            <span class="line-text">{line.text}</span>
+        <!-- Search activity lines -->
+        {#if lines.length > 0}
+          <div class="activity-lines">
+            {#each lines as line, i (i)}
+              <div class="activity-line {lineClass(line.type)}" style="animation-delay: {i * 0.04}s">
+                <span class="line-icon">{lineIcon(line.type)}</span>
+                <span class="line-text">{line.text}</span>
+              </div>
+            {/each}
           </div>
-        {/each}
-      </div>
+        {/if}
 
-      <div class="progress-bar-track">
-        <div
-          class="progress-bar-fill"
-          class:indeterminate={phase === "searching"}
-          class:almost={phase === "analyzing"}
-          class:full={phase === "done"}
-        ></div>
+        <!-- Streaming agent output -->
+        {#if streamText}
+          <div class="stream-area">
+            <div class="stream-label">
+              <span class="status-dot dot-pulse small"></span>
+              AI 分析输出
+            </div>
+            <div class="stream-content">
+              <pre class="stream-text">{streamText}</pre>
+            </div>
+          </div>
+        {/if}
+
+        <!-- Progress bar -->
+        <div class="progress-track">
+          <div
+            class="progress-fill"
+            class:indeterminate={phase === "searching"}
+            class:almost={phase === "analyzing"}
+            class:full={phase === "done"}
+          ></div>
+        </div>
+      </div>
+    {/if}
+
+    <!-- Report toggle after completion -->
+    {#if reportText && !active}
+      <div class="report-section">
+        <button class="report-toggle" onclick={() => showReport = !showReport}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          {showReport ? "收起研究报告" : "查看完整研究报告"}
+          <svg class="chevron" class:open={showReport} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        {#if showReport}
+          <div class="report-content">
+            <MarkdownBlock text={reportText} />
+          </div>
+        {/if}
       </div>
     {/if}
   </div>
@@ -77,11 +125,10 @@
   .research-progress {
     display: grid;
     grid-template-rows: 0fr;
-    transition: grid-template-rows 300ms cubic-bezier(0.16, 1, 0.3, 1);
+    transition: grid-template-rows 350ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  .research-progress.expanded,
-  .research-progress.has-error {
+  .research-progress.expanded {
     grid-template-rows: 1fr;
   }
 
@@ -90,11 +137,21 @@
     min-height: 0;
   }
 
+  /* ── Progress card ───────────────────────────────────── */
+  .progress-card {
+    background: rgba(134, 120, 191, 0.06);
+    border: 1px solid rgba(134, 120, 191, 0.15);
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
   .progress-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.75rem 0;
   }
 
   .header-left {
@@ -110,12 +167,16 @@
     letter-spacing: -0.01em;
   }
 
-  .dot {
+  .status-dot {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    display: inline-block;
     flex-shrink: 0;
+  }
+
+  .status-dot.small {
+    width: 6px;
+    height: 6px;
   }
 
   .dot-pulse {
@@ -123,25 +184,20 @@
     animation: pulse 1.2s ease-in-out infinite;
   }
 
-  .dot-done {
-    background: #34d399;
-  }
-
-  .dot-error {
-    background: var(--error, #fb7185);
-  }
+  .dot-done { background: #34d399; }
+  .dot-error { background: var(--error, #fb7185); }
 
   @keyframes pulse {
     0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
+    50% { opacity: 0.3; }
   }
 
-  .cancel-btn {
-    padding: 0.3rem 0.7rem;
+  .action-pill {
+    padding: 0.3rem 0.8rem;
     border-radius: 6px;
-    border: 1px solid var(--border);
-    background: none;
-    color: var(--text-dim);
+    border: 1px solid rgba(134, 120, 191, 0.3);
+    background: rgba(134, 120, 191, 0.1);
+    color: var(--accent);
     font-size: 0.75rem;
     font-weight: 600;
     font-family: inherit;
@@ -149,44 +205,50 @@
     transition: all 0.15s ease;
   }
 
-  .cancel-btn:hover {
-    border-color: var(--accent);
-    color: var(--accent);
+  .action-pill:hover {
+    background: rgba(134, 120, 191, 0.2);
   }
 
-  .lines {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-    padding: 0 0 0.75rem;
-  }
-
-  .line {
-    display: flex;
-    align-items: baseline;
-    gap: 0.4rem;
-    font-size: 0.8rem;
-    font-weight: 500;
-    animation: lineIn 200ms ease both;
-  }
-
-  .line-done {
+  .action-pill.cancel {
+    border-color: var(--border);
+    background: none;
     color: var(--text-dim);
   }
 
-  .line-active {
-    color: var(--text);
-  }
-
-  .line-error {
+  .action-pill.cancel:hover {
+    border-color: var(--error, #fb7185);
     color: var(--error, #fb7185);
   }
 
+  /* ── Activity lines ──────────────────────────────────── */
+  .activity-lines {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  .activity-line {
+    display: flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    font-size: 0.78rem;
+    font-weight: 500;
+    animation: lineIn 180ms ease both;
+  }
+
+  .line-done { color: var(--text-dim); }
+  .line-active { color: var(--text); }
+  .line-error { color: var(--error, #fb7185); }
+  .line-text-stream { color: var(--text-muted); }
+
   .line-icon {
-    font-size: 0.7rem;
+    font-size: 0.65rem;
     width: 1em;
     text-align: center;
     flex-shrink: 0;
+    opacity: 0.7;
   }
 
   .line-text {
@@ -194,54 +256,123 @@
   }
 
   @keyframes lineIn {
-    from {
-      opacity: 0;
-      transform: translateY(4px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
+    from { opacity: 0; transform: translateY(3px); }
+    to { opacity: 1; transform: translateY(0); }
   }
 
-  .progress-bar-track {
+  /* ── Stream area ─────────────────────────────────────── */
+  .stream-area {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .stream-label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.72rem;
+    font-weight: 650;
+    color: var(--text-dim);
+    letter-spacing: 0.02em;
+  }
+
+  .stream-content {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    padding: 0.75rem;
+    max-height: 240px;
+    overflow-y: auto;
+    border: 1px solid rgba(255, 255, 255, 0.04);
+  }
+
+  .stream-text {
+    font-size: 0.76rem;
+    line-height: 1.55;
+    color: var(--text-muted);
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+    font-family: inherit;
+  }
+
+  /* ── Progress bar ────────────────────────────────────── */
+  .progress-track {
     height: 3px;
-    background: var(--border);
+    background: rgba(255, 255, 255, 0.06);
     border-radius: 2px;
     overflow: hidden;
-    margin-bottom: 1rem;
   }
 
-  .progress-bar-fill {
+  .progress-fill {
     height: 100%;
     background: var(--accent);
     border-radius: 2px;
     width: 0%;
-    transition: width 400ms ease;
+    transition: width 500ms ease;
   }
 
-  .progress-bar-fill.indeterminate {
+  .progress-fill.indeterminate {
     width: 100%;
-    animation: shimmer 1.5s ease-in-out infinite;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      var(--accent) 50%,
-      transparent 100%
-    );
+    animation: shimmer 1.8s ease-in-out infinite;
+    background: linear-gradient(90deg, transparent 0%, var(--accent) 50%, transparent 100%);
     background-size: 200% 100%;
   }
 
-  .progress-bar-fill.almost {
-    width: 90%;
-  }
-
-  .progress-bar-fill.full {
-    width: 100%;
-  }
+  .progress-fill.almost { width: 90%; }
+  .progress-fill.full { width: 100%; }
 
   @keyframes shimmer {
     0% { background-position: -200% 0; }
     100% { background-position: 200% 0; }
+  }
+
+  /* ── Report section ──────────────────────────────────── */
+  .report-section {
+    margin-top: 0.5rem;
+  }
+
+  .report-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.65rem 1rem;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.02);
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: left;
+  }
+
+  .report-toggle:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(134, 120, 191, 0.06);
+  }
+
+  .chevron {
+    margin-left: auto;
+    transition: transform 0.2s ease;
+  }
+
+  .chevron.open {
+    transform: rotate(180deg);
+  }
+
+  .report-content {
+    margin-top: 0.75rem;
+    padding: 1.25rem;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    backdrop-filter: var(--card-blur);
+    -webkit-backdrop-filter: var(--card-blur);
+    animation: lineIn 250ms ease;
   }
 </style>
