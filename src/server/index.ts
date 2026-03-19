@@ -11,6 +11,7 @@ import { ensureSharedDirs } from "../shared-assets.js";
 import { apiRoutes, setWsBridge } from "./api.js";
 import { WsBridge } from "../ws-bridge.js";
 import { startResearchScheduler } from "../research-scheduler.js";
+import { startAnalyticsCollector } from "../analytics-collector.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -74,6 +75,7 @@ export async function startServer(port: number): Promise<{ server: Server }> {
 
   // 7. Start research scheduler
   await startResearchScheduler();
+  await startAnalyticsCollector();
 
   return { server: httpServer };
 }

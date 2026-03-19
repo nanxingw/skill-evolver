@@ -15,6 +15,8 @@ import { MemoryClient } from "../memory.js";
 import type { WsBridge } from "../ws-bridge.js";
 import { getProvider, getDefaultProvider, listProviders } from "../providers/registry.js";
 import { listSharedAssets, getSharedAssetPath, CATEGORIES } from "../shared-assets.js";
+import { getLatestCreatorData, getCreatorHistory } from "../analytics-collector.js";
+import { syncStepConversation } from "../memory-sync.js";
 
 export const apiRoutes = new Hono();
 
@@ -250,6 +252,28 @@ apiRoutes.get("/api/analytics", async (c) => {
     return c.json({ totalWorks: 0, totalViews: 0, totalLikes: 0, totalComments: 0 });
   }
 });
+
+// GET /api/analytics/creator — latest creator data + trend delta
+apiRoutes.get("/api/analytics/creator", async (c) => {
+  const latest = await getLatestCreatorData()
+  if (!latest) return c.json({ configured: false, data: null })
+  const history = await getCreatorHistory(7)
+  const yesterday = history.find(h => h.date !== new Date().toISOString().slice(0, 10))
+  let delta: Record<string, number> | null = null
+  if (yesterday?.data?.account && latest.account) {
+    delta = {
+      followers: latest.account.follower_count - yesterday.data.account.follower_count,
+      favorited: latest.account.total_favorited - yesterday.data.account.total_favorited,
+    }
+  }
+  return c.json({ configured: true, data: latest, delta })
+})
+
+// GET /api/analytics/creator/history — daily snapshots for charts
+apiRoutes.get("/api/analytics/creator/history", async (c) => {
+  const history = await getCreatorHistory(30)
+  return c.json({ history })
+})
 
 // ---------------------------------------------------------------------------
 // Generate API (Provider-based image/video generation)
@@ -729,6 +753,24 @@ apiRoutes.post("/api/works/:id/pipeline/advance", async (c) => {
     }
 
     await storeUpdateWork(id, { pipeline: work.pipeline });
+
+    // Sync conversation to EverMemOS (fire and forget)
+    if (completedStep) {
+      loadStepHistory(id, completedStep).then(history => {
+        const h = history as { blocks?: { type: string; text: string }[] } | null;
+        if (h?.blocks) {
+          getWork(id).then(w => {
+            syncStepConversation(
+              id,
+              w?.title ?? "Untitled",
+              completedStep,
+              w?.pipeline?.[completedStep]?.name ?? completedStep,
+              h.blocks!,
+            ).catch(() => {})
+          }).catch(() => {})
+        }
+      }).catch(() => {})
+    }
 
     // Broadcast pipeline update to browsers via WsBridge
     if (wsBridge) {
