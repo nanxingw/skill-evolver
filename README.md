@@ -170,6 +170,17 @@ JIMENG_SECRET_KEY=xxxxxxxxxxxxxxxx
 
 成品保存在作品的 `output/` 目录，右侧素材面板可以预览和下载。
 
+### 5. 数据分析
+
+进入「数据」页面，连接你的抖音账号（粘贴主页链接），系统每小时自动采集：
+- 粉丝数、获赞数、互动率
+- 每条作品的播放/点赞/评论/分享/收藏
+- AI Agent 在创作时可按需查询这些数据，给出更精准的内容建议
+
+### 6. AI 记忆（可选）
+
+在设置中开启 EverMemOS 同步后，每次创作完成时对话记录自动同步到云端记忆系统。AI 在后续创作中可以搜索历史经验，避免重复选题，持续改进内容策略。
+
 ## 项目架构
 
 ```
@@ -186,34 +197,42 @@ Claude Code CLI (stream-json 模式)
 
 ```
 src/
-  cli.ts                 # CLI 入口（start/stop/config）
-  config.ts              # 配置管理（.env + config.yaml）
-  work-store.ts          # 作品持久化存储
-  ws-bridge.ts           # WebSocket 桥接（浏览器 ↔ Claude CLI）
+  cli.ts                    # CLI 入口（start/stop/config）
+  config.ts                 # 配置管理（.env + config.yaml）
+  work-store.ts             # 作品持久化存储
+  ws-bridge.ts              # WebSocket 桥接（浏览器 ↔ Claude CLI）
+  analytics-collector.ts    # 创作者数据定时采集服务
+  memory.ts                 # EverMemOS 记忆客户端
+  memory-sync.ts            # 对话同步到 EverMemOS
   server/
-    api.ts               # REST API 路由
-    index.ts             # Web 服务器
+    api.ts                  # REST API 路由
+    index.ts                # Web 服务器
   providers/
-    jimeng.ts            # 即梦 API 集成（HMAC-SHA256 签名）
-    base.ts              # Provider 接口
-    registry.ts          # Provider 注册
+    jimeng.ts               # 即梦 API（HMAC-SHA256 签名）
+    nanobanana.ts           # OpenRouter/Gemini 生图
+    base.ts                 # Provider 接口
+    registry.ts             # Provider 注册
 
-web/
-  src/
-    pages/
-      Studio.svelte      # 创作工作台（聊天+流水线+素材）
-      Explore.svelte     # 趋势探索
-      Works.svelte       # 作品列表
-    components/
-      PipelineSteps.svelte    # 流水线侧边栏
-      ResearchProgress.svelte # 搜索进度指示器
-      AssetPanel.svelte       # 素材浏览面板
+web/src/
+  pages/
+    Studio.svelte           # 创作工作台（聊天+流水线+画布）
+    Explore.svelte          # 趋势探索（兴趣驱动+增强卡片）
+    Works.svelte            # 作品列表（封面预览）
+    Analytics.svelte        # 创作者数据仪表盘
+    SettingsPanel.svelte    # 设置面板
+  components/
+    PipelineSteps.svelte    # 流水线侧边栏
+    ResearchProgress.svelte # 搜索进度+AI输出流
+    AssetPanel.svelte       # 素材浏览面板
+    CanvasWorkspace.svelte  # 画布工作区
+    InterestTags.svelte     # 兴趣标签编辑
 
-skills/                  # AI Agent 技能定义
-  trend-research/        # 趋势调研技能
-  content-planning/      # 内容规划技能
-  asset-generation/      # 素材生成技能
-  content-assembly/      # 内容合成技能
+skills/                     # AI Agent 技能定义（模块化 references/ 结构）
+  trend-research/           # 趋势调研（含热搜脚本）
+  content-planning/         # 内容规划
+  asset-generation/         # 素材生成（含生图脚本）
+  content-assembly/         # 内容合成
+  creator-analytics/        # 创作者数据采集
 ```
 
 ### 数据存储
@@ -250,8 +269,11 @@ skills/                  # AI Agent 技能定义
 | `jimeng.accessKey` | — | 即梦 API AccessKey（建议在 .env 配置） |
 | `jimeng.secretKey` | — | 即梦 API SecretKey（建议在 .env 配置） |
 | `research.enabled` | `true` | 是否启用定时调研 |
-| `research.schedule` | `0 9,21 * * *` | 调研 cron 表达式（默认每天 9 点和 21 点） |
-| `research.platforms` | `["douyin","xiaohongshu"]` | 监控的平台 |
+| `research.schedule` | `0 9,21 * * *` | 调研 cron 表达式 |
+| `analytics.douyinUrl` | — | 抖音主页链接（在数据页面配置） |
+| `analytics.collectInterval` | `60` | 采集间隔（分钟） |
+| `memory.syncEnabled` | `false` | 是否启用 EverMemOS 对话同步 |
+| `interests` | `[]` | 用户关注领域（在探索页面配置） |
 
 ## 技术栈
 
