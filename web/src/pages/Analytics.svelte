@@ -12,7 +12,7 @@
 
   interface WorkItem {
     desc: string;
-    create_time: number;
+    create_time: number | string;
     play_count: number;
     digg_count: number;
     comment_count: number;
@@ -86,8 +86,11 @@
     return (n * 100).toFixed(1) + "%";
   }
 
-  function fmtDate(ts: number): string {
-    const d = new Date(ts * 1000);
+  function fmtDate(ts: number | string): string {
+    if (!ts) return "-";
+    // Handle both unix timestamp (number) and date string ("2026-02-27 16:21:44")
+    const d = typeof ts === "string" ? new Date(ts.replace(" ", "T")) : new Date(ts * 1000);
+    if (isNaN(d.getTime())) return "-";
     return `${d.getMonth() + 1}/${d.getDate()}`;
   }
 
@@ -216,6 +219,19 @@
 {:else}
   <!-- ── Dashboard ──────────────────────────────────────────────────────── -->
   <div class="dashboard">
+
+    <!-- 0. Platform tabs -->
+    <div class="platform-tabs">
+      <button class="ptab active">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5"/></svg>
+        抖音
+      </button>
+      <button class="ptab disabled" disabled title="即将支持">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M8 12h8M12 8v8"/></svg>
+        小红书
+        <span class="coming-soon">即将支持</span>
+      </button>
+    </div>
 
     <!-- 1. Account Header Bar -->
     <div class="acct-bar">
@@ -548,6 +564,49 @@
   }
 
   /* ── Account Header Bar ─────────────────────────────────────────────────── */
+  /* Platform tabs */
+  .platform-tabs {
+    display: flex;
+    gap: 0.3rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .ptab {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 1rem;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: none;
+    color: var(--text-dim);
+    font-size: 0.82rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .ptab.active {
+    background: var(--accent-gradient);
+    color: var(--accent-text);
+    border-color: transparent;
+  }
+
+  .ptab.disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .coming-soon {
+    font-size: 0.6rem;
+    font-weight: 700;
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-dim);
+  }
+
   .acct-bar {
     display: flex;
     align-items: center;
