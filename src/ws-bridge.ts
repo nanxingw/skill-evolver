@@ -19,7 +19,7 @@ import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import { logBridge, logBridgeDebug } from "./logger.js";
 import { loadConfig, dataDir } from "./config.js";
-import { getWork, updateWork, saveStepHistory, type Work, type PipelineStep } from "./work-store.js";
+import { getWork, updateWork, saveStepHistory, loadStepHistory, type Work, type PipelineStep } from "./work-store.js";
 import { listSharedAssets } from "./shared-assets.js";
 import { MemoryClient } from "./memory.js";
 
@@ -655,22 +655,36 @@ ${memoryContext}
               },
             });
             // Auto-save step history from backend (doesn't rely on frontend)
-            if (!session.workId.startsWith("trends_")) {
+            // Only save the NEW messages from this turn (not entire history)
+            if (!session.workId.startsWith("trends_") && resultText) {
               getWork(session.workId).then(w => {
                 if (!w) return;
                 const activeStep = Object.entries(w.pipeline).find(([, s]) => s.status === "active");
                 if (activeStep) {
                   const [stepKey, stepInfo] = activeStep;
-                  const blocks = session.messageHistory.map(m => ({
-                    type: m.role === "user" ? "user" : "text",
-                    text: m.text,
-                  }));
-                  saveStepHistory(session.workId, stepKey, {
-                    stepKey,
-                    stepName: stepInfo.name,
-                    completedAt: new Date().toISOString(),
-                    blocks,
-                  }).catch(() => {});
+                  // Build blocks from this turn only: the last user message + resultText
+                  const lastUserMsg = [...session.messageHistory].reverse().find(m => m.role === "user");
+                  const blocks: Array<{type: string; text: string}> = [];
+                  if (lastUserMsg) blocks.push({ type: "user", text: lastUserMsg.text });
+                  blocks.push({ type: "text", text: resultText });
+                  // Append to existing step history (don't overwrite)
+                  loadStepHistory(session.workId, stepKey).then(existing => {
+                    const existingBlocks = (existing as any)?.blocks ?? [];
+                    saveStepHistory(session.workId, stepKey, {
+                      stepKey,
+                      stepName: stepInfo.name,
+                      completedAt: new Date().toISOString(),
+                      blocks: [...existingBlocks, ...blocks],
+                    }).catch(() => {});
+                  }).catch(() => {
+                    // No existing history, save fresh
+                    saveStepHistory(session.workId, stepKey, {
+                      stepKey,
+                      stepName: stepInfo.name,
+                      completedAt: new Date().toISOString(),
+                      blocks,
+                    }).catch(() => {});
+                  });
                 }
               }).catch(() => {});
             }

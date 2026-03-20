@@ -791,6 +791,19 @@ apiRoutes.post("/api/works/:id/pipeline/advance", async (c) => {
       work.pipeline[completedStep].completedAt = new Date().toISOString();
     }
 
+    // Also mark all steps before completedStep as done (in case agent skipped)
+    const stepKeys = Object.keys(work.pipeline);
+    const completedIdx = stepKeys.indexOf(completedStep);
+    if (completedIdx > 0) {
+      for (let i = 0; i < completedIdx; i++) {
+        if (work.pipeline[stepKeys[i]].status !== "done") {
+          work.pipeline[stepKeys[i]].status = "done";
+          work.pipeline[stepKeys[i]].completedAt = work.pipeline[stepKeys[i]].completedAt ?? new Date().toISOString();
+          log("info", "api", "pipeline_auto_complete_skipped", id, { step: stepKeys[i] });
+        }
+      }
+    }
+
     // Mark next step as active if provided
     if (nextStep && work.pipeline[nextStep]) {
       work.pipeline[nextStep].status = "active";
