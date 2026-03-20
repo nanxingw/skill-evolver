@@ -70,7 +70,7 @@
     if (inactivityTimer) clearTimeout(inactivityTimer);
     inactivityTimer = setTimeout(() => {
       if (streaming) { streaming = false; showNextStep = true; }
-    }, 15000);
+    }, 60000);
   }
 
   const statusLabels: Record<string, string> = {
