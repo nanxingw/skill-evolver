@@ -144,7 +144,7 @@ export async function runPipeline(wsBridge: WsBridge, config: RunConfig): Promis
       try {
         // Build step prompt (same logic as /step/:step API)
         const extraMsg = config.stepMessages?.[stepKey] ?? "";
-        let prompt = `请开始执行「${stepInfo.name}」步骤。${extraMsg}`;
+        let prompt = `请开始执行「${stepInfo.name}」步骤。这是自动化测试，请不要提问或等待确认，根据已有信息直接执行并完成本步骤。完成后立即推进pipeline。${extraMsg}`;
 
         // For assets step, add instruction to use scripts
         if (stepKey === "assets") {
