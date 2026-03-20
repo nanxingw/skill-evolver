@@ -10,7 +10,6 @@
     currentStep = "",
     topicHint = "",
     workTitle = "",
-    onStepClick,
     onNextStep,
     canAdvance = false,
   }: {
@@ -20,7 +19,6 @@
     currentStep: string;
     topicHint?: string;
     workTitle?: string;
-    onStepClick: (stepKey: string) => void;
     onNextStep?: (stepKey: string) => void;
     canAdvance?: boolean;
   } = $props();
@@ -108,10 +106,7 @@
           {#if i > 0}
             <div class="connector" class:connector-done={pipeline[stepKeys[i - 1]]?.status === "done"}></div>
           {/if}
-          <button
-            class="step-item {statusClass(status, key)}"
-            onclick={() => onStepClick(key)}
-          >
+          <div class="step-item {statusClass(status, key)}">
             <span class="step-indicator" class:pulse={status === "active"}>
               {statusIcon(status)}
             </span>
@@ -135,7 +130,7 @@
                 {/if}
               </span>
             </div>
-          </button>
+          </div>
         </div>
       {/each}
     </div>
@@ -266,15 +261,13 @@
     color: var(--text);
     font-family: inherit;
     font-size: 0.82rem;
-    cursor: pointer;
+    cursor: default;
     transition: all 0.15s ease;
     text-align: left;
     width: 100%;
     position: relative;
     z-index: 1;
   }
-
-  .step-item:hover { background: var(--bg-hover); }
 
   .step-indicator {
     width: 1.6rem;
