@@ -18,6 +18,8 @@ import { listSharedAssets, getSharedAssetPath, CATEGORIES } from "../shared-asse
 import { getLatestCreatorData, getCreatorHistory } from "../analytics-collector.js";
 import { syncStepConversation } from "../memory-sync.js";
 import { log, readLogs } from "../logger.js";
+import { runPipeline, getRunStatus, listRuns, getRunReport, type RunConfig } from "../test-runner.js";
+import { evaluateWork } from "../test-evaluator.js";
 
 export const apiRoutes = new Hono();
 
@@ -906,6 +908,76 @@ apiRoutes.get("/api/logs/work/:id", async (c) => {
   const workId = c.req.param("id");
   const entries = await readLogs({ workId, limit: 500 });
   return c.json({ entries, count: entries.length });
+});
+
+// ---------------------------------------------------------------------------
+// Test Runner API
+// ---------------------------------------------------------------------------
+
+// POST /api/test/run — trigger a full pipeline test run
+apiRoutes.post("/api/test/run", async (c) => {
+  if (!wsBridge) return c.json({ error: "WsBridge not initialized" }, 503);
+
+  try {
+    const body = await c.req.json<RunConfig>();
+    if (!body.type || !body.platform) {
+      return c.json({ error: "type and platform are required" }, 400);
+    }
+
+    // Start run in background (don't await the full pipeline)
+    const resultPromise = runPipeline(wsBridge, body);
+
+    // Small delay to let runner initialize and create the work
+    await new Promise(r => setTimeout(r, 500));
+
+    // Find the active run
+    const runs = await listRuns();
+    const activeRun = runs.find(r => r.status === "running");
+
+    if (activeRun) {
+      // After pipeline completes, run evaluation (fire and forget)
+      resultPromise.then(async (result) => {
+        try {
+          const evaluation = await evaluateWork(result.workId, body.type);
+          result.evaluation = evaluation;
+          // Re-save with evaluation
+          const { writeFile, mkdir } = await import("node:fs/promises");
+          const dir = join(homedir(), ".autoviral", "test-runs", result.runId);
+          await mkdir(dir, { recursive: true });
+          await writeFile(join(dir, "result.json"), JSON.stringify(result, null, 2), "utf-8");
+          await writeFile(join(dir, "evaluation.json"), JSON.stringify(evaluation, null, 2), "utf-8");
+        } catch { /* evaluation failure is non-blocking */ }
+      }).catch(() => {});
+
+      return c.json({ runId: activeRun.runId, workId: activeRun.workId, status: "running" });
+    }
+
+    return c.json({ error: "Failed to start run" }, 500);
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : "Run failed" }, 500);
+  }
+});
+
+// GET /api/test/status/:runId — query run status
+apiRoutes.get("/api/test/status/:runId", async (c) => {
+  const runId = c.req.param("runId");
+  const run = getRunStatus(runId) ?? await getRunReport(runId);
+  if (!run) return c.json({ error: "Run not found" }, 404);
+  return c.json(run);
+});
+
+// GET /api/test/runs — list all test runs
+apiRoutes.get("/api/test/runs", async (c) => {
+  const runs = await listRuns();
+  return c.json({ runs });
+});
+
+// GET /api/test/runs/:runId/report — full report
+apiRoutes.get("/api/test/runs/:runId/report", async (c) => {
+  const runId = c.req.param("runId");
+  const report = await getRunReport(runId);
+  if (!report) return c.json({ error: "Report not found" }, 404);
+  return c.json(report);
 });
 
 // ---------------------------------------------------------------------------
