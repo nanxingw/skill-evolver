@@ -1,10 +1,14 @@
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { createWork, getWork, updateWork, listAssets } from "./work-store.js";
 import { loadConfig } from "./config.js";
 import { log } from "./logger.js";
-import type { WsBridge } from "./ws-bridge.js";
+import type { WsBridge, ChatBlock } from "./ws-bridge.js";
+
+const execFileAsync = promisify(execFile);
 
 const TEST_RUNS_DIR = join(homedir(), ".autoviral", "test-runs");
 
@@ -144,7 +148,7 @@ export async function runPipeline(wsBridge: WsBridge, config: RunConfig): Promis
       try {
         // Build step prompt (same logic as /step/:step API)
         const extraMsg = config.stepMessages?.[stepKey] ?? "";
-        let prompt = `请开始执行「${stepInfo.name}」步骤。这是自动化测试，请不要提问或等待确认，根据已有信息直接执行并完成本步骤。完成后立即推进pipeline。${extraMsg}`;
+        let prompt = `请开始执行「${stepInfo.name}」步骤。${extraMsg}`;
 
         // For assets step, add instruction to use scripts
         if (stepKey === "assets") {
@@ -232,18 +236,19 @@ async function waitForStepCompletion(
     const toolCalls: string[] = [];
     let messageCount = 0;
     let settled = false;
+    let lastAssistantText = "";  // Accumulate agent's text output for this turn
+    let turnCount = 0;
+    const MAX_TURNS = 10; // Safety limit to prevent infinite conversation loops
 
     const timer = setTimeout(() => {
       if (!settled) {
         settled = true;
         cleanup();
-        // Kill the session
         wsBridge.killSession(workId);
         reject(new Error(`Step ${stepKey} timed out after ${timeout / 1000}s`));
       }
     }, timeout);
 
-    // Listen for events
     const cleanup = wsBridge.onSessionEvent(workId, (event, data: any) => {
       if (settled) return;
 
@@ -253,27 +258,55 @@ async function waitForStepCompletion(
 
       if (event === "assistant_text") {
         messageCount++;
+        lastAssistantText += (data.text ?? "");
       }
 
       if (event === "turn_complete" || event === "cli_exited") {
-        // Check if pipeline advanced (agent marked step as done)
-        getWork(workId).then(w => {
-          if (!w) return;
+        turnCount++;
+
+        getWork(workId).then(async w => {
+          if (!w || settled) return;
           const step = w.pipeline[stepKey];
+
+          // Step is done — resolve
           if (step?.status === "done") {
             settled = true;
             clearTimeout(timer);
             cleanup();
             resolve({ status: "completed", messageCount, toolCalls });
+            return;
           }
-          // If CLI exited but step not done, agent may need another round
-          // For test runner, we treat cli_exited + step not done as the end of this turn
-          // The runner will check and potentially send another message
-          if (event === "cli_exited" && step?.status !== "done") {
+
+          // Step NOT done + turn complete → agent is waiting for user input
+          // Simulate a user response using AI
+          if (turnCount >= MAX_TURNS) {
             settled = true;
             clearTimeout(timer);
             cleanup();
             resolve({ status: "completed", messageCount, toolCalls });
+            return;
+          }
+
+          log("info", "server", "test_simulating_user", workId, {
+            stepKey, turnCount, agentTextLen: lastAssistantText.length,
+          });
+
+          try {
+            const userReply = await generateUserReply(lastAssistantText, stepKey, w.title);
+            lastAssistantText = ""; // Reset for next turn
+
+            log("info", "server", "test_user_reply", workId, {
+              stepKey, reply: userReply.slice(0, 100),
+            });
+
+            // Send the simulated user reply
+            await wsBridge.sendMessage(workId, userReply);
+          } catch (err) {
+            // If AI reply generation fails, send a generic "继续" to unblock
+            log("warn", "server", "test_user_reply_failed", workId, {
+              error: err instanceof Error ? err.message : String(err),
+            });
+            await wsBridge.sendMessage(workId, "好的，请继续执行，不需要等我确认。").catch(() => {});
           }
         }).catch(() => {});
       }
@@ -301,6 +334,41 @@ async function waitForStepCompletion(
       });
     }
   });
+}
+
+// ── AI-Simulated User Reply ────────────────────────────────────────────────
+
+async function generateUserReply(
+  agentText: string,
+  stepKey: string,
+  workTitle: string,
+): Promise<string> {
+  const prompt = `你正在模拟一个用户与AI创作助手的对话。AI助手刚刚说了以下内容：
+
+---
+${agentText.slice(-2000)}
+---
+
+作品标题：${workTitle}
+当前步骤：${stepKey}
+
+请作为用户回复。规则：
+- 如果AI在问问题，给出合理的选择或回答
+- 如果AI在等确认，回复"好的，请继续"
+- 如果AI展示了方案让你选择，选择第一个或推荐的选项
+- 如果AI完成了工作在等反馈，回复"很好，请推进到下一步"
+- 回复要简短自然，像真实用户一样
+- 只输出用户回复的内容，不要加任何解释
+
+用户回复：`;
+
+  const { stdout } = await execFileAsync("claude", [
+    "-p", prompt,
+    "--output-format", "text",
+    "--model", "haiku",
+  ], { timeout: 30000 });
+
+  return stdout.trim() || "好的，请继续";
 }
 
 // ── Persistence ────────────────────────────────────────────────────────────
