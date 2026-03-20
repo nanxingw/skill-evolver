@@ -17,6 +17,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import yaml from "js-yaml";
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
+import { logBridge, logBridgeDebug } from "./logger.js";
 import { loadConfig, dataDir } from "./config.js";
 import { getWork, updateWork, type Work, type PipelineStep } from "./work-store.js";
 import { listSharedAssets } from "./shared-assets.js";
@@ -210,6 +211,7 @@ ${memoryContext}
    * then spawns `claude -p <prompt> --output-format stream-json --verbose`.
    */
   async createSession(workId: string, initialPrompt: string, model?: string): Promise<WsSession> {
+    logBridge("session_create", workId, { model, promptLen: initialPrompt.length });
     const existing = this.sessions.get(workId);
     if (existing?.cliProcess) {
       try { existing.cliProcess.kill("SIGTERM"); } catch { /* dead */ }
@@ -548,7 +550,14 @@ ${memoryContext}
 
           // assistant — forward all content blocks to browsers
           if (msg.type === "assistant" && msg.message?.content) {
-            for (const block of msg.message.content as Array<Record<string, unknown>>) {
+            const blocks = msg.message.content as Array<Record<string, unknown>>;
+            const blockTypes = blocks.map((b: Record<string, unknown>) => b.type).join(",");
+            logBridgeDebug("cli_assistant_message", session.workId, {
+              messageId: msg.message.id,
+              blockTypes,
+              blockCount: blocks.length,
+            });
+            for (const block of blocks) {
               if (block.type === "text" && block.text) {
                 if (session.workId.startsWith("trends_") && lastEventWasToolResult) {
                   this.broadcastToBrowsers(session.workId, {
@@ -603,7 +612,12 @@ ${memoryContext}
             const resultText = typeof msg.result === "string" && msg.result
               ? msg.result
               : turnText;
-            console.log(`[ws-bridge] turn_complete for ${session.workId}: result=${typeof msg.result === "string" ? msg.result.slice(0, 80) + "..." : "none"}, turnText=${turnText.slice(0, 80)}...`);
+            logBridge("turn_complete", session.workId, {
+              hasResult: !!(typeof msg.result === "string" && msg.result),
+              resultLen: typeof msg.result === "string" ? msg.result.length : 0,
+              turnTextLen: turnText.length,
+              resultPreview: (resultText || "").slice(0, 150),
+            });
             if (resultText) {
               session.messageHistory.push({
                 role: "assistant",
@@ -650,6 +664,7 @@ ${memoryContext}
     });
 
     proc.on("exit", (code, signal) => {
+      logBridge("cli_exit", session.workId, { code, signal, turnTextLen: turnText.length });
       session.cliProcess = undefined;
       session.idle = true;
       if (session.workId.startsWith("trends_")) {

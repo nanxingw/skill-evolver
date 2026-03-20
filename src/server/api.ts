@@ -17,6 +17,7 @@ import { getProvider, getDefaultProvider, listProviders } from "../providers/reg
 import { listSharedAssets, getSharedAssetPath, CATEGORIES } from "../shared-assets.js";
 import { getLatestCreatorData, getCreatorHistory } from "../analytics-collector.js";
 import { syncStepConversation } from "../memory-sync.js";
+import { log, readLogs } from "../logger.js";
 
 export const apiRoutes = new Hono();
 
@@ -775,6 +776,7 @@ apiRoutes.post("/api/works/:id/pipeline/advance", async (c) => {
   const id = c.req.param("id");
   try {
     const body = await c.req.json<{ completedStep: string; nextStep?: string }>().catch(() => ({} as any));
+    log("info", "api", "pipeline_advance", id, { completedStep: body.completedStep, nextStep: body.nextStep });
     const work = await getWork(id);
     if (!work) return c.json({ error: "Work not found" }, 404);
 
@@ -881,6 +883,29 @@ apiRoutes.put("/api/works/:id/chat", async (c) => {
   } catch {
     return c.json({ error: "Save failed" }, 500);
   }
+});
+
+// ---------------------------------------------------------------------------
+// Logs API — structured log viewer
+// ---------------------------------------------------------------------------
+
+// GET /api/logs — query structured logs
+apiRoutes.get("/api/logs", async (c) => {
+  const date = c.req.query("date");
+  const workId = c.req.query("workId");
+  const source = c.req.query("source") as any;
+  const level = c.req.query("level") as any;
+  const limit = parseInt(c.req.query("limit") ?? "200", 10);
+
+  const entries = await readLogs({ date, workId, source, level, limit });
+  return c.json({ entries, count: entries.length });
+});
+
+// GET /api/logs/work/:id — all logs for a specific work
+apiRoutes.get("/api/logs/work/:id", async (c) => {
+  const workId = c.req.param("id");
+  const entries = await readLogs({ workId, limit: 500 });
+  return c.json({ entries, count: entries.length });
 });
 
 // ---------------------------------------------------------------------------
