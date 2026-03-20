@@ -19,7 +19,7 @@ import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import { logBridge, logBridgeDebug } from "./logger.js";
 import { loadConfig, dataDir } from "./config.js";
-import { getWork, updateWork, type Work, type PipelineStep } from "./work-store.js";
+import { getWork, updateWork, saveStepHistory, type Work, type PipelineStep } from "./work-store.js";
 import { listSharedAssets } from "./shared-assets.js";
 import { MemoryClient } from "./memory.js";
 
@@ -58,6 +58,7 @@ interface NdjsonMessage {
 
 export class WsBridge {
   private sessions: Map<string, WsSession> = new Map();
+  private eventListeners: Map<string, Set<(event: string, data: unknown) => void>> = new Map();
   private browserWss: WebSocketServer;
 
   constructor(_serverPort: number) {
@@ -392,6 +393,20 @@ ${memoryContext}
     return this.sessions.get(workId);
   }
 
+  /**
+   * Register a listener for session events. Returns cleanup function.
+   * Used by TestRunner to wait for events without polling.
+   */
+  onSessionEvent(workId: string, callback: (event: string, data: unknown) => void): () => void {
+    if (!this.eventListeners.has(workId)) {
+      this.eventListeners.set(workId, new Set());
+    }
+    this.eventListeners.get(workId)!.add(callback);
+    return () => {
+      this.eventListeners.get(workId)?.delete(callback);
+    };
+  }
+
   getAllSessions(): Map<string, WsSession> {
     return this.sessions;
   }
@@ -639,6 +654,26 @@ ${memoryContext}
                 historyLength: session.messageHistory.length,
               },
             });
+            // Auto-save step history from backend (doesn't rely on frontend)
+            if (!session.workId.startsWith("trends_")) {
+              getWork(session.workId).then(w => {
+                if (!w) return;
+                const activeStep = Object.entries(w.pipeline).find(([, s]) => s.status === "active");
+                if (activeStep) {
+                  const [stepKey, stepInfo] = activeStep;
+                  const blocks = session.messageHistory.map(m => ({
+                    type: m.role === "user" ? "user" : "text",
+                    text: m.text,
+                  }));
+                  saveStepHistory(session.workId, stepKey, {
+                    stepKey,
+                    stepName: stepInfo.name,
+                    completedAt: new Date().toISOString(),
+                    blocks,
+                  }).catch(() => {});
+                }
+              }).catch(() => {});
+            }
             continue;
           }
 
@@ -760,6 +795,14 @@ ${memoryContext}
     for (const ws of session.browserSockets) {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(message);
+      }
+    }
+
+    // Notify in-process event listeners (used by TestRunner)
+    const listeners = this.eventListeners.get(workId);
+    if (listeners) {
+      for (const cb of listeners) {
+        try { cb(payload.event, payload.data); } catch { /* listener error shouldn't crash bridge */ }
       }
     }
   }
