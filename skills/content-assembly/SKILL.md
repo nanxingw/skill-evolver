@@ -84,23 +84,187 @@ curl http://localhost:3271/api/shared-assets
 
 ### 阶段二：执行组装
 
-#### 第1步：统一所有片段格式
+#### 第1步：统一所有片段格式（横屏→竖屏智能裁切）
 
-在拼接前确保所有片段具有相同的分辨率、帧率和编码格式：
+在拼接前，必须将所有片段转为竖屏 9:16（1080×1920）。**绝不允许出现黑边——画面必须充满屏幕。**
 
+**先检测素材是否为横屏：**
 ```bash
 # 获取素材目录路径
 WORK_DIR=$(curl -s http://localhost:3271/api/works/{workId} | python3 -c "import sys,json; print(json.load(sys.stdin).get('path',''))")
 
-# 将每个片段标准化为统一规格
-ffmpeg -i clip-01.mp4 -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black" -r 30 -c:v libx264 -preset medium -crf 23 -c:a aac -ar 44100 -y norm-01.mp4
+# 检测宽高
+ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 clip-01.mp4
+# 输出示例: 1920,1080 (横屏) 或 1080,1920 (竖屏)
 ```
 
-对每个片段执行此操作。关键的标准化参数：
-- 分辨率：`scale=1080:1920`，带黑边填充以保持原始宽高比
+**横屏素材的两种裁切策略：**
+
+**策略A：充满屏幕裁切（优先使用）**
+
+当绝对主体可以在裁切后完整露出时，直接裁切为 9:16，画面充满屏幕：
+
+```bash
+ffmpeg -i clip-01.mp4 -vf "crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920" -r 30 -c:v libx264 -preset medium -crf 23 -c:a aac -ar 44100 -y norm-01.mp4
+```
+
+原理：从横屏中央裁出竖屏比例的区域，然后缩放到 1080×1920。
+
+**策略B：保留完整宽度居中（绝对主体会被裁切时使用）**
+
+当主体较宽（如多人场景、全身动作），裁切会遮挡主体时，保持横屏的宽度等于竖屏的宽度（1080px），在垂直方向居中，上下留黑边：
+
+```bash
+ffmpeg -i clip-01.mp4 -vf "scale=1080:-2,pad=1080:1920:0:(oh-ih)/2:black" -r 30 -c:v libx264 -preset medium -crf 23 -c:a aac -ar 44100 -y norm-01.mp4
+```
+
+原理：先将宽度缩放到 1080，高度按比例缩小，然后在上下补黑边居中。
+
+**选择依据：**
+
+| 情况 | 使用策略 | 判断方法 |
+|------|---------|---------|
+| 主体居中，占画面 < 60% 宽度 | A（充满裁切） | 裁切后主体仍完整可见 |
+| 主体占画面 > 60% 宽度，或在边缘 | B（宽度对齐居中） | 裁切会切掉主体 |
+| 不确定时 | 先用 A 试裁，抽一帧检查主体是否完整 | 用 ffmpeg 抽帧预览 |
+
+**抽帧预览检查：**
+```bash
+# 用策略A裁切后抽一帧检查
+ffmpeg -i clip-01.mp4 -vf "crop=ih*9/16:ih:(iw-ih*9/16)/2:0" -ss 00:00:02 -frames:v 1 -y preview-crop.png
+# 查看 preview-crop.png，确认主体是否完整
+```
+
+**竖屏素材**直接标准化：
+```bash
+ffmpeg -i clip-01.mp4 -vf "scale=1080:1920:force_original_aspect_ratio=decrease,crop=1080:1920" -r 30 -c:v libx264 -preset medium -crf 23 -c:a aac -ar 44100 -y norm-01.mp4
+```
+
+**通用参数：**
 - 帧率：`-r 30`
 - 编码：`-c:v libx264 -preset medium -crf 23`
 - 音频：`-c:a aac -ar 44100`
+
+#### 第1.5步：剪除静音/停顿片段（有人声的素材必做）
+
+当视频中有人物说话时，**必须剪掉所有无声停顿片段**，只保留人物在说话的部分。这能大幅提升节奏感和完播率。
+
+**检测流程：**
+
+```bash
+# 1. 用 silencedetect 检测静音片段（阈值 -30dB，持续超过 0.5 秒视为停顿）
+ffmpeg -i norm-01.mp4 -af silencedetect=noise=-30dB:d=0.5 -f null - 2>&1 | grep "silence_"
+# 输出示例:
+# [silencedetect] silence_start: 3.245
+# [silencedetect] silence_end: 4.812 | silence_duration: 1.567
+# [silencedetect] silence_start: 8.100
+# [silencedetect] silence_end: 9.350 | silence_duration: 1.250
+```
+
+**裁剪流程：**
+
+```bash
+# 2. 根据检测结果，提取有声片段并拼接
+# 假设检测到 0-3.245 有声，4.812-8.100 有声，9.350-end 有声
+
+# 提取各有声片段
+ffmpeg -i norm-01.mp4 -ss 0 -to 3.245 -c copy -y seg-01.mp4
+ffmpeg -i norm-01.mp4 -ss 4.812 -to 8.100 -c copy -y seg-02.mp4
+ffmpeg -i norm-01.mp4 -ss 9.350 -c copy -y seg-03.mp4
+
+# 拼接有声片段
+cat > speech-list.txt << 'EOF'
+file 'seg-01.mp4'
+file 'seg-02.mp4'
+file 'seg-03.mp4'
+EOF
+ffmpeg -f concat -safe 0 -i speech-list.txt -c copy -y norm-01-trimmed.mp4
+```
+
+**自动化脚本（推荐）：**
+
+```bash
+# 一行命令：检测静音并自动生成裁剪后的视频
+# 保留语音片段之间 0.1 秒的微小间隔，避免剪辑太硬
+python3 -c "
+import subprocess, re, sys
+
+input_file = 'norm-01.mp4'
+output_file = 'norm-01-trimmed.mp4'
+silence_thresh = '-30dB'
+min_silence = '0.5'
+
+# Detect silences
+result = subprocess.run(
+    ['ffmpeg', '-i', input_file, '-af', f'silencedetect=noise={silence_thresh}:d={min_silence}', '-f', 'null', '-'],
+    capture_output=True, text=True
+)
+lines = result.stderr
+
+# Parse silence intervals
+starts = [float(m.group(1)) for m in re.finditer(r'silence_start: ([\d.]+)', lines)]
+ends = [float(m.group(1)) for m in re.finditer(r'silence_end: ([\d.]+)', lines)]
+
+if not starts:
+    print('No silence detected, keeping original')
+    subprocess.run(['cp', input_file, output_file])
+    sys.exit(0)
+
+# Build speech segments (inverse of silence)
+# Get total duration
+dur_result = subprocess.run(
+    ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', input_file],
+    capture_output=True, text=True
+)
+total_dur = float(dur_result.stdout.strip())
+
+speech = []
+prev_end = 0.0
+for s, e in zip(starts, ends):
+    if s > prev_end + 0.05:
+        speech.append((prev_end, s))
+    prev_end = e
+if prev_end < total_dur - 0.05:
+    speech.append((prev_end, total_dur))
+
+# Extract and concat
+segs = []
+for i, (a, b) in enumerate(speech):
+    seg = f'_seg_{i:03d}.mp4'
+    subprocess.run(['ffmpeg', '-i', input_file, '-ss', str(a), '-to', str(b), '-c', 'copy', '-y', seg],
+                   capture_output=True)
+    segs.append(seg)
+
+with open('_speech_list.txt', 'w') as f:
+    for seg in segs:
+        f.write(f\"file '{seg}'\n\")
+
+subprocess.run(['ffmpeg', '-f', 'concat', '-safe', '0', '-i', '_speech_list.txt', '-c', 'copy', '-y', output_file],
+               capture_output=True)
+
+# Cleanup
+import os
+for seg in segs:
+    os.remove(seg)
+os.remove('_speech_list.txt')
+print(f'Trimmed: {len(starts)} silences removed, {len(speech)} speech segments kept')
+"
+```
+
+**适用条件：**
+- 素材中有人物说话/演讲/解说 → **必须执行**
+- 纯音乐/纯画面/无人声素材 → **跳过此步**
+- 抽象类内容中刻意使用的沉默 → **跳过此步**（沉默是创意的一部分）
+
+**参数调整：**
+| 场景 | noise 阈值 | min_silence |
+|------|-----------|-------------|
+| 安静环境录音 | -40dB | 0.5s |
+| 一般室内 | -30dB | 0.5s |
+| 嘈杂环境 | -20dB | 0.8s |
+| 演讲/独白（保留自然停顿） | -30dB | 1.0s |
+
+---
 
 #### 第2步：拼接片段
 
@@ -198,6 +362,25 @@ ffmpeg -i concat.mp4 -vf "ass=subs.ass" -c:v libx264 -crf 23 -c:a copy -y subtit
 ```
 
 #### 第4步：添加背景音乐
+
+**音乐获取规则：指定知名歌曲时**
+
+当用户指定了一首具体歌曲名时，必须遵循以下规则：
+
+1. **必须使用官方音源**：从官方音乐平台（YouTube Music、网易云音乐、QQ音乐等）获取，不能使用真人翻唱、live版、cover版或任何非官方录音
+2. **直接从高潮部分开始**：不要从歌曲开头播放。用 ffmpeg 裁切到副歌/高潮段落，跳过前奏和主歌
+3. **高潮定位方法**：
+   - 大多数流行歌曲高潮在 50-70% 位置（如4分钟的歌，高潮大约在 2:00-2:48）
+   - 用 `ffmpeg -i song.mp3 -ss 120 -to 150 -c copy chorus.mp3` 裁切高潮段
+   - 如果不确定高潮位置，搜索"[歌名] 高潮 时间点"或听几个位置找到能量最高的段落
+
+```bash
+# 下载官方音源（用 yt-dlp 从官方MV提取音频）
+yt-dlp -x --audio-format mp3 --audio-quality 0 -o "song.%(ext)s" "OFFICIAL_MV_URL"
+
+# 裁切高潮部分（示例：从2:00开始取30秒）
+ffmpeg -i song.mp3 -ss 120 -to 150 -c copy -y chorus.mp3
+```
 
 ```bash
 # 简单的音乐叠加，带音量控制

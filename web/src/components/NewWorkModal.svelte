@@ -9,7 +9,7 @@
   }: {
     open: boolean;
     onClose: () => void;
-    onCreate: (data: { title: string; type: string; platforms: string[]; topicHint: string }) => void;
+    onCreate: (data: { title: string; type: string; contentCategory: string; videoSource: string; videoSearchQuery: string; topicHint: string }) => void;
   } = $props();
 
   let lang = $state(getLanguage());
@@ -17,7 +17,9 @@
 
   let title = $state("");
   let selectedType = $state("short-video");
-  let selectedPlatforms: string[] = $state(["xiaohongshu"]);
+  let selectedCategory = $state("info");
+  let videoSource = $state("search");
+  let videoSearchQuery = $state("");
   let topicHint = $state("");
 
   onMount(() => {
@@ -25,21 +27,20 @@
     return unsub;
   });
 
-  function togglePlatform(p: string) {
-    if (selectedPlatforms.includes(p)) {
-      if (selectedPlatforms.length > 1) {
-        selectedPlatforms = selectedPlatforms.filter(x => x !== p);
-      }
-    } else {
-      selectedPlatforms = [...selectedPlatforms, p];
-    }
-  }
-
   function handleCreate() {
-    onCreate({ title, type: selectedType, platforms: selectedPlatforms, topicHint });
+    onCreate({
+      title,
+      type: selectedType,
+      contentCategory: selectedCategory,
+      videoSource: selectedType === "short-video" ? videoSource : "",
+      videoSearchQuery: videoSource === "search" ? videoSearchQuery : "",
+      topicHint,
+    });
     title = "";
     selectedType = "short-video";
-    selectedPlatforms = ["xiaohongshu"];
+    selectedCategory = "info";
+    videoSource = "search";
+    videoSearchQuery = "";
     topicHint = "";
   }
 
@@ -83,23 +84,92 @@
         </div>
       </div>
 
-      <!-- Platforms: toggleable chips -->
+      <!-- Video Source: only visible when short-video is selected -->
+      {#if selectedType === "short-video"}
+        <div class="form-section">
+          <span class="form-label">{tt("videoSource")}</span>
+          <div class="source-row">
+            <button
+              class="source-chip"
+              class:selected={videoSource === "upload"}
+              onclick={() => videoSource = "upload"}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              {tt("videoSourceUpload")}
+            </button>
+            <button
+              class="source-chip"
+              class:selected={videoSource === "search"}
+              onclick={() => videoSource = "search"}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              {tt("videoSourceSearch")}
+            </button>
+            <button
+              class="source-chip"
+              class:selected={videoSource === "ai-generate"}
+              onclick={() => videoSource = "ai-generate"}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+              {tt("videoSourceAI")}
+            </button>
+          </div>
+          <span class="source-hint">
+            {#if videoSource === "search"}
+              {tt("videoSourceSearchHint")}
+            {:else if videoSource === "ai-generate"}
+              {tt("videoSourceAIHint")}
+            {:else}
+              {tt("videoSourceUploadHint")}
+            {/if}
+          </span>
+          {#if videoSource === "search"}
+            <input
+              type="text"
+              class="form-input source-search-input"
+              bind:value={videoSearchQuery}
+              placeholder={tt("videoSearchPlaceholder")}
+            />
+          {/if}
+        </div>
+      {/if}
+
+      <!-- Content Category -->
       <div class="form-section">
-        <span class="form-label">{tt("selectPlatforms")}</span>
-        <div class="platform-row">
+        <span class="form-label">{tt("contentCategory")}</span>
+        <div class="category-grid">
           <button
-            class="platform-chip"
-            class:selected={selectedPlatforms.includes("douyin")}
-            onclick={() => togglePlatform("douyin")}
+            class="category-card"
+            class:selected={selectedCategory === "info"}
+            onclick={() => selectedCategory = "info"}
           >
-            {tt("douyin")}
+            <span class="category-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+            </span>
+            <span class="category-name">{tt("categoryInfo")}</span>
+            <span class="category-desc">{tt("categoryInfoDesc")}</span>
           </button>
           <button
-            class="platform-chip"
-            class:selected={selectedPlatforms.includes("xiaohongshu")}
-            onclick={() => togglePlatform("xiaohongshu")}
+            class="category-card"
+            class:selected={selectedCategory === "beauty"}
+            onclick={() => selectedCategory = "beauty"}
           >
-            {tt("xiaohongshu")}
+            <span class="category-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </span>
+            <span class="category-name">{tt("categoryBeauty")}</span>
+            <span class="category-desc">{tt("categoryBeautyDesc")}</span>
+          </button>
+          <button
+            class="category-card"
+            class:selected={selectedCategory === "comedy"}
+            onclick={() => selectedCategory = "comedy"}
+          >
+            <span class="category-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+            </span>
+            <span class="category-name">{tt("categoryComedy")}</span>
+            <span class="category-desc">{tt("categoryComedyDesc")}</span>
           </button>
         </div>
       </div>
@@ -242,14 +312,17 @@
     font-weight: 650;
   }
 
-  /* Platform chips */
-  .platform-row {
+  /* Video source chips */
+  .source-row {
     display: flex;
     gap: 0.5rem;
   }
 
-  .platform-chip {
-    padding: 0.5rem 1.25rem;
+  .source-chip {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 1.1rem;
     border: 1.5px solid var(--border);
     border-radius: 9999px;
     background: var(--bg-surface);
@@ -261,14 +334,86 @@
     transition: all 0.15s ease;
   }
 
-  .platform-chip:hover {
+  .source-chip:hover {
     border-color: var(--text-dim);
   }
 
-  .platform-chip.selected {
+  .source-chip.selected {
     border-color: var(--accent);
     background: var(--accent-soft);
     color: var(--accent);
+  }
+
+  .source-hint {
+    display: block;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-top: 0.4rem;
+    line-height: 1.4;
+  }
+
+  .source-search-input {
+    margin-top: 0.5rem;
+  }
+
+  /* Category cards */
+  .category-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0.6rem;
+  }
+
+  .category-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.85rem 0.5rem;
+    border: 2px solid var(--border);
+    border-radius: 14px;
+    background: var(--bg-surface);
+    color: var(--text);
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+  }
+
+  .category-card:hover {
+    border-color: var(--text-dim);
+    background: var(--bg-hover);
+    transform: translateY(-2px);
+  }
+
+  .category-card.selected {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    box-shadow: 0 0 0 3px rgba(134, 120, 191, 0.1);
+  }
+
+  .category-icon {
+    color: var(--text-muted);
+    transition: color 0.2s ease;
+  }
+
+  .category-card.selected .category-icon {
+    color: var(--accent);
+  }
+
+  .category-name {
+    font-size: 0.78rem;
+    font-weight: 650;
+    line-height: 1.2;
+  }
+
+  .category-desc {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    line-height: 1.3;
+  }
+
+  .category-card.selected .category-desc {
+    color: var(--text-secondary);
   }
 
   .form-input {

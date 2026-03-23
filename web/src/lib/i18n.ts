@@ -63,6 +63,25 @@ const translations: Record<Language, Record<string, string>> = {
     titlePlaceholder: "Optional — AI will generate if empty",
     resultTitle: "Title",
 
+    // Video source
+    videoSource: "Video Source",
+    videoSourceUpload: "Upload",
+    videoSourceSearch: "Web Search",
+    videoSourceSearchHint: "AI will search and download matching videos from the web",
+    videoSourceUploadHint: "Upload your own video clips",
+    videoSourceAI: "AI Generate",
+    videoSourceAIHint: "AI will generate video clips using Jimeng API",
+    videoSearchPlaceholder: "Describe the video content you want to find...",
+
+    // Content categories
+    contentCategory: "Content Category",
+    categoryInfo: "Info / Knowledge",
+    categoryBeauty: "Beauty / Talent",
+    categoryComedy: "Comedy / Abstract",
+    categoryInfoDesc: "Tutorials, tips, educational",
+    categoryBeautyDesc: "Aesthetic, dance, fashion",
+    categoryComedyDesc: "Funny skits, absurdist humor",
+
     // Platforms
     xiaohongshu: "Xiaohongshu",
     douyin: "Douyin",
@@ -86,6 +105,7 @@ const translations: Record<Language, Record<string, string>> = {
     stepFailedLabel: "Failed",
 
     // 4 pipeline steps
+    stepMaterialSearch: "Material Search",
     stepResearch: "Research",
     stepPlan: "Plan",
     stepAssets: "Assets",
@@ -199,6 +219,25 @@ const translations: Record<Language, Record<string, string>> = {
     titlePlaceholder: "可选，不填则AI自动生成",
     resultTitle: "标题",
 
+    // Video source
+    videoSource: "视频来源",
+    videoSourceUpload: "自己上传",
+    videoSourceSearch: "全网搜索",
+    videoSourceSearchHint: "AI 将在网上搜索并下载匹配的视频素材",
+    videoSourceUploadHint: "上传你自己的视频素材",
+    videoSourceAI: "AI 生成",
+    videoSourceAIHint: "使用即梦 API 生成视频片段",
+    videoSearchPlaceholder: "描述你想搜索的视频内容...",
+
+    // Content categories
+    contentCategory: "内容品类",
+    categoryInfo: "信息 / 知识类",
+    categoryBeauty: "颜值 / 才艺类",
+    categoryComedy: "搞笑 / 抽象类",
+    categoryInfoDesc: "教程、干货、知识分享",
+    categoryBeautyDesc: "审美、舞蹈、穿搭",
+    categoryComedyDesc: "搞笑短剧、抽象内容",
+
     // Platforms
     xiaohongshu: "小红书",
     douyin: "抖音",
@@ -222,6 +261,7 @@ const translations: Record<Language, Record<string, string>> = {
     stepFailedLabel: "失败",
 
     // 4 pipeline steps
+    stepMaterialSearch: "素材搜索",
     stepResearch: "调研",
     stepPlan: "策划",
     stepAssets: "素材",

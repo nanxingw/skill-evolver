@@ -5,7 +5,7 @@
   import Studio from "./pages/Studio.svelte";
   import Works from "./pages/Works.svelte";
   import NewWorkModal from "./components/NewWorkModal.svelte";
-  import { fetchConfig, updateConfig, fetchWorks, createWorkApi, type WorkSummary } from "./lib/api";
+  import { fetchConfig, updateConfig, fetchWorks, createWorkApi, type WorkSummary, type ContentCategory } from "./lib/api";
   import { t, getLanguage, setLanguage, subscribe } from "./lib/i18n";
 
   let theme: "light" | "dark" = $state("dark");
@@ -27,9 +27,6 @@
   let saving: boolean = $state(false);
   let settingsMessage: string = $state("");
 
-  // Sidebar hover
-  let sidebarExpanded = $state(false);
-
   function openStudio(workId: string) {
     currentWorkId = workId;
     showStudio = true;
@@ -40,13 +37,16 @@
     currentWorkId = null;
   }
 
-  async function handleCreateWork(data: { title: string; type: string; platforms: string[]; topicHint: string }) {
+  async function handleCreateWork(data: { title: string; type: string; contentCategory: string; videoSource: string; videoSearchQuery: string; topicHint: string }) {
     showNewWorkModal = false;
     try {
       const newWork = await createWorkApi({
         title: data.title || "Untitled",
         type: data.type as any,
-        platforms: data.platforms,
+        contentCategory: (data.contentCategory || "info") as ContentCategory,
+        videoSource: data.videoSource || undefined,
+        videoSearchQuery: data.videoSearchQuery || undefined,
+        platforms: ["douyin", "xiaohongshu"],
         topicHint: data.topicHint || undefined,
       });
       currentWorkId = newWork.id;
@@ -97,71 +97,46 @@
   });
 
   const navItems = [
-    { tab: "explore" as Tab, icon: "search", labelKey: "explore" },
-    { tab: "works" as Tab, icon: "works", labelKey: "works" },
-    { tab: "analytics" as Tab, icon: "analytics", labelKey: "analytics" },
+    { tab: "works" as Tab, labelKey: "works" },
+    { tab: "explore" as Tab, labelKey: "explore" },
+    { tab: "analytics" as Tab, labelKey: "analytics" },
   ];
 </script>
 
 <div class="shell" data-lang={lang}>
-  <!-- Sidebar -->
-  <nav
-    class="sidebar"
-    class:expanded={sidebarExpanded}
-    onmouseenter={() => sidebarExpanded = true}
-    onmouseleave={() => sidebarExpanded = false}
-  >
-    <div class="sidebar-logo">
+  <!-- Top Navigation Bar -->
+  <header class="topbar">
+    <div class="topbar-left">
       <div class="logo-icon">
-        <svg width="20" height="20" viewBox="0 0 32 32" fill="none">
-          <path d="M8 6L20 16L8 26V6Z" fill="url(#sidebar-grad)" opacity="0.9"/>
+        <svg width="18" height="18" viewBox="0 0 32 32" fill="none">
+          <path d="M8 6L20 16L8 26V6Z" fill="url(#topbar-grad)" opacity="0.9"/>
           <path d="M16 6L28 16L16 26V6Z" fill="#fff" opacity="0.45"/>
-          <defs><linearGradient id="sidebar-grad" x1="8" y1="6" x2="20" y2="26"><stop stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0.6"/></linearGradient></defs>
+          <defs><linearGradient id="topbar-grad" x1="8" y1="6" x2="20" y2="26"><stop stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0.6"/></linearGradient></defs>
         </svg>
       </div>
-      {#if sidebarExpanded}
-        <span class="logo-text">AutoViral</span>
-      {/if}
+      <span class="logo-text">AutoViral</span>
+      <nav class="top-tabs">
+        {#each navItems as item}
+          <button
+            class="top-tab"
+            class:active={activeTab === item.tab && !showStudio}
+            onclick={() => { activeTab = item.tab; showStudio = false; currentWorkId = null; }}
+          >
+            {tt(item.labelKey)}
+          </button>
+        {/each}
+      </nav>
     </div>
-
-    <div class="nav-items">
-      {#each navItems as item}
-        <button
-          class="nav-item"
-          class:active={activeTab === item.tab && !showStudio}
-          onclick={() => { activeTab = item.tab; showStudio = false; currentWorkId = null; }}
-        >
-          <span class="nav-icon">
-            {#if item.icon === "search"}
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            {:else if item.icon === "works"}
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-            {:else if item.icon === "analytics"}
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-            {/if}
-          </span>
-          {#if sidebarExpanded}
-            <span class="nav-label">{tt(item.labelKey)}</span>
-          {/if}
-        </button>
-      {/each}
-    </div>
-
-    <div class="nav-bottom">
+    <div class="topbar-right">
       <button
-        class="nav-item"
+        class="settings-btn"
         class:active={showSettings}
         onclick={() => { showSettings = !showSettings; }}
       >
-        <span class="nav-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-        </span>
-        {#if sidebarExpanded}
-          <span class="nav-label">{tt("settings")}</span>
-        {/if}
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </button>
     </div>
-  </nav>
+  </header>
 
   <!-- Main Content -->
   <main class="main-content">
@@ -384,80 +359,66 @@
 
   .shell {
     display: flex;
+    flex-direction: column;
     height: 100vh;
     overflow: hidden;
   }
 
-  /* ── Sidebar ──────────────────────────────────────────────────── */
-  .sidebar {
-    width: 60px;
-    flex-shrink: 0;
+  /* ── Top Navigation Bar ──────────────────────────────────── */
+  .topbar {
     display: flex;
-    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    height: 52px;
+    flex-shrink: 0;
     background: var(--sidebar-bg);
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
-    border-right: 1px solid var(--border);
-    padding: 0.75rem 0;
-    transition: width var(--transition-normal);
-    overflow: hidden;
+    border-bottom: 1px solid var(--border);
+    padding: 0 1.5rem;
     z-index: 200;
   }
 
-  .sidebar.expanded {
-    width: 200px;
-  }
-
-  .sidebar-logo {
+  .topbar-left {
     display: flex;
     align-items: center;
-    gap: 0.65rem;
-    padding: 0.5rem 0.85rem 1.5rem;
-    white-space: nowrap;
-    overflow: hidden;
+    gap: 1rem;
+  }
+
+  .topbar-right {
+    display: flex;
+    align-items: center;
   }
 
   .logo-icon {
-    width: 36px;
-    height: 36px;
-    min-width: 36px;
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
     background: var(--accent-gradient);
-    border-radius: 11px;
+    border-radius: 9px;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 4px 12px rgba(134, 120, 191, 0.25);
+    box-shadow: 0 3px 10px rgba(134, 120, 191, 0.25);
   }
 
   .logo-text {
-    font-size: 1.1rem;
+    font-size: 1rem;
     font-weight: 750;
     letter-spacing: -0.04em;
     color: var(--text);
-    animation: fadeInLabel 0.2s ease;
   }
 
-  .nav-items {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    padding: 0 0.5rem;
-  }
-
-  .nav-bottom {
-    padding: 0 0.5rem;
-    border-top: 1px solid var(--border);
-    padding-top: 0.5rem;
-    margin-top: 0.5rem;
-  }
-
-  .nav-item {
+  .top-tabs {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    padding: 0.6rem 0.7rem;
-    border-radius: 12px;
+    gap: 0.25rem;
+    margin-left: 0.75rem;
+  }
+
+  .top-tab {
+    padding: 0.4rem 1rem;
+    border-radius: 8px;
     border: none;
     background: none;
     color: var(--text-muted);
@@ -467,42 +428,40 @@
     cursor: pointer;
     transition: all var(--transition-fast);
     white-space: nowrap;
-    overflow: hidden;
-    width: 100%;
-    text-align: left;
   }
 
-  .nav-item:hover {
+  .top-tab:hover {
     background: var(--bg-hover);
     color: var(--text);
   }
 
-  .nav-item.active {
+  .top-tab.active {
     background: var(--accent-soft);
     color: var(--accent);
   }
 
-  .nav-item.active .nav-icon {
-    color: var(--accent);
-  }
-
-  .nav-icon {
+  .settings-btn {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 24px;
-    min-width: 24px;
-    height: 24px;
-    flex-shrink: 0;
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    border: none;
+    background: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all var(--transition-fast);
   }
 
-  .nav-label {
-    animation: fadeInLabel 0.2s ease;
+  .settings-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text);
   }
 
-  @keyframes fadeInLabel {
-    from { opacity: 0; transform: translateX(-4px); }
-    to { opacity: 1; transform: translateX(0); }
+  .settings-btn.active {
+    background: var(--accent-soft);
+    color: var(--accent);
   }
 
   /* ── Main Content ─────────────────────────────────────────── */
@@ -791,17 +750,15 @@
 
   /* ── Responsive ───────────────────────────────────────────── */
   @media (max-width: 768px) {
-    .sidebar {
-      width: 0;
-      border-right: none;
-      position: fixed;
-      top: 0;
-      left: 0;
-      bottom: 0;
+    .topbar {
+      padding: 0 0.75rem;
     }
-    .sidebar.expanded {
-      width: 200px;
-      box-shadow: var(--shadow-lg);
+    .logo-text {
+      display: none;
+    }
+    .top-tab {
+      padding: 0.35rem 0.65rem;
+      font-size: 0.8rem;
     }
     .main-content {
       padding: 1rem 1rem 3rem;

@@ -289,13 +289,10 @@
       }
     });
 
-    // Only auto-resume if step is already active (was running before page reload)
-    const shouldAutoResume = work?.pipeline && currentStep &&
-      work.pipeline[currentStep]?.status === "active";
-    if (shouldAutoResume) {
-      try {
-        await startWorkSession(workId);
-      } catch { /* failed */ }
+    // Auto-trigger if a step is already "active" (e.g. video-search created as active)
+    if (work?.pipeline && currentStep && work.pipeline[currentStep]?.status === "active") {
+      // Small delay to let WS connect first
+      setTimeout(() => triggerStep(currentStep), 500);
     }
 
     return () => {

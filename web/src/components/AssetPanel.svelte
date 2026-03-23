@@ -36,8 +36,15 @@
   function isMarkdown(name: string) { return /\.md$/i.test(name); }
   function isText(name: string) { return /\.(txt|json|yaml|yml)$/i.test(name); }
 
+  function isFinalVideo(name: string): boolean {
+    const filename = (name.split("/").pop() ?? "").toLowerCase();
+    return /\.(mp4|mov|webm)$/i.test(filename) && /final/.test(filename);
+  }
+
   function classifyFile(name: string): AssetFile["group"] {
     if (name.startsWith("output/") || name.startsWith("output\\")) return "output";
+    // Any video with "final" in the filename is a finished output, regardless of directory
+    if (isFinalVideo(name)) return "output";
     if (name.startsWith("assets/frames/") || name.includes("/frames/")) return "frames";
     if (name.startsWith("assets/clips/") || name.includes("/clips/")) return "clips";
     if (name.startsWith("assets/images/") || name.includes("/images/")) return "images";
