@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../lib/i18n";
   import MarkdownBlock from "./MarkdownBlock.svelte";
 
   interface ProgressLine {
@@ -50,7 +51,7 @@
               <span class="header-text">调研失败</span>
             {:else if phase === "done"}
               <span class="status-dot dot-done"></span>
-              <span class="header-text">调研完成</span>
+              <span class="header-text">{t("researchDone")}</span>
             {:else if phase === "analyzing"}
               <span class="status-dot dot-pulse"></span>
               <span class="header-text">AI 正在分析趋势...</span>
@@ -139,8 +140,8 @@
 
   /* ── Progress card ───────────────────────────────────── */
   .progress-card {
-    background: rgba(134, 120, 191, 0.06);
-    border: 1px solid rgba(134, 120, 191, 0.15);
+    background: rgba(0, 0, 0, 0.06);
+    border: 1px solid rgba(0, 0, 0, 0.15);
     border-radius: 12px;
     padding: 1rem 1.25rem;
     display: flex;
@@ -195,8 +196,8 @@
   .action-pill {
     padding: 0.3rem 0.8rem;
     border-radius: 6px;
-    border: 1px solid rgba(134, 120, 191, 0.3);
-    background: rgba(134, 120, 191, 0.1);
+    border: 1px solid rgba(0, 0, 0, 0.3);
+    background: rgba(0, 0, 0, 0.1);
     color: var(--accent);
     font-size: 0.75rem;
     font-weight: 600;
@@ -206,7 +207,7 @@
   }
 
   .action-pill:hover {
-    background: rgba(134, 120, 191, 0.2);
+    background: rgba(0, 0, 0, 0.2);
   }
 
   .action-pill.cancel {
@@ -353,7 +354,7 @@
   .report-toggle:hover {
     border-color: var(--accent);
     color: var(--accent);
-    background: rgba(134, 120, 191, 0.06);
+    background: rgba(0, 0, 0, 0.06);
   }
 
   .chevron {

@@ -351,7 +351,7 @@
   .loader-sm {
     width: 16px;
     height: 16px;
-    border: 2px solid rgba(134, 120, 191, 0.15);
+    border: 2px solid rgba(0, 0, 0, 0.15);
     border-top-color: var(--accent);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
@@ -421,7 +421,7 @@
   }
 
   .field-input:focus {
-    border-color: rgba(134, 120, 191, 0.5);
+    border-color: rgba(0, 0, 0, 0.5);
   }
 
   .field-input::placeholder {
@@ -449,7 +449,7 @@
   }
 
   .field-select:focus {
-    border-color: rgba(134, 120, 191, 0.5);
+    border-color: rgba(0, 0, 0, 0.5);
   }
 
   .field-select option {
@@ -545,7 +545,7 @@
 
   .save-btn:hover:not(:disabled) {
     opacity: 0.9;
-    box-shadow: 0 4px 14px rgba(134, 120, 191, 0.3);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
   }
 
   .save-btn:disabled {

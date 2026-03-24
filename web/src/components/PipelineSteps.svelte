@@ -33,11 +33,8 @@
 
   let stepKeys = $derived(Object.keys(pipeline));
 
-  function statusIcon(status: string): string {
-    if (status === "done") return "\u2713";
-    if (status === "active") return "\u25C9";
-    if (status === "skipped") return "\u2717";
-    return "\u25CB";
+  function isDone(status: string): boolean {
+    return status === "done";
   }
 
   function statusClass(status: string, key: string): string {
@@ -78,25 +75,12 @@
 </script>
 
 <div class="pipeline-panel">
-  <!-- Work info header -->
-  <div class="work-info">
-    {#if workTitle}
-      <h3 class="work-title">{workTitle}</h3>
-    {/if}
-    <div class="work-meta">
-      <span class="meta-tag type-tag">{tt(typeLabels[contentType] ?? contentType)}</span>
-      {#each platforms as p}
-        <span class="meta-tag">{tt(platformLabels[p] ?? p)}</span>
-      {/each}
-    </div>
-    {#if topicHint}
-      <p class="topic-hint">{topicHint}</p>
-    {/if}
-  </div>
-
   <!-- Steps timeline -->
   <div class="steps-timeline">
     <span class="section-title">{tt("pipelineSteps")}</span>
+    {#if topicHint}
+      <p class="topic-hint">{topicHint}</p>
+    {/if}
     <div class="steps-list">
       {#each stepKeys as key, i}
         {@const step = pipeline[key]}
@@ -108,7 +92,11 @@
           {/if}
           <div class="step-item {statusClass(status, key)}">
             <span class="step-indicator" class:pulse={status === "active"}>
-              {statusIcon(status)}
+              {#if isDone(status)}
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              {:else}
+                {i + 1}
+              {/if}
             </span>
             <div class="step-content">
               <span class="step-name">{step?.name ?? key}</span>
@@ -136,14 +124,6 @@
     </div>
   </div>
 
-  {#if nextPendingStep && onNextStep && canAdvance}
-    <div class="next-step-bar">
-      <button class="next-step-btn" onclick={() => onNextStep!(nextPendingStep!)}>
-        {pipeline[nextPendingStep]?.name ?? nextPendingStep}
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-      </button>
-    </div>
-  {/if}
 </div>
 
 <style>
@@ -197,12 +177,14 @@
   }
 
   .topic-hint {
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     color: var(--text-dim);
-    line-height: 1.45;
-    margin-top: 0.15rem;
+    line-height: 1.5;
+    margin: 0.25rem 0.3rem 0.5rem;
+    padding: 0;
+    white-space: pre-line;
     display: -webkit-box;
-    -webkit-line-clamp: 3;
+    -webkit-line-clamp: 5;
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
@@ -247,7 +229,7 @@
   }
 
   .connector-done {
-    background: rgba(52, 211, 153, 0.4);
+    background: rgba(254, 44, 85, 0.3);
   }
 
   .step-item {
@@ -270,17 +252,19 @@
   }
 
   .step-indicator {
-    width: 1.6rem;
-    height: 1.6rem;
-    min-width: 1.6rem;
+    width: 1.5rem;
+    height: 1.5rem;
+    min-width: 1.5rem;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.7rem;
+    font-family: var(--font-display, inherit);
+    font-size: 0.68rem;
     font-weight: 700;
-    border: 2px solid var(--border);
-    background: var(--bg-inset);
+    border: 1.5px solid var(--border);
+    background: none;
+    color: var(--text-dim);
     transition: all 0.2s ease;
   }
 
@@ -315,19 +299,19 @@
 
   /* Done */
   .step-done .step-indicator {
-    border-color: var(--success);
-    color: var(--success);
-    background: rgba(52, 211, 153, 0.1);
+    border-color: var(--spark-red, #FE2C55);
+    color: #fff;
+    background: var(--spark-red, #FE2C55);
   }
-  .step-done .step-status-text { color: var(--success); }
+  .step-done .step-status-text { color: var(--text-muted); }
 
   /* Running */
   .step-running .step-indicator {
-    border-color: var(--state-running);
-    color: var(--state-running);
-    background: rgba(245, 158, 11, 0.1);
+    border-color: var(--spark-red, #FE2C55);
+    color: var(--spark-red, #FE2C55);
+    background: none;
   }
-  .step-running .step-status-text { color: var(--state-running); }
+  .step-running .step-status-text { color: var(--spark-red, #FE2C55); }
 
   /* Pulsing active indicator */
   .pulse {
@@ -335,32 +319,31 @@
   }
 
   @keyframes pulse-glow {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.3); }
-    50% { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
+    0%, 100% { box-shadow: 0 0 0 0 rgba(254, 44, 85, 0.25); }
+    50% { box-shadow: 0 0 0 5px rgba(254, 44, 85, 0); }
   }
 
   /* Failed */
   .step-failed .step-indicator {
-    border-color: var(--error);
-    color: var(--error);
-    background: rgba(251, 113, 133, 0.1);
+    border-color: var(--text-dim);
+    color: var(--text-dim);
+    background: none;
   }
-  .step-failed .step-status-text { color: var(--error); }
+  .step-failed .step-status-text { color: var(--text-dim); }
 
   /* Pending */
-  .step-pending { opacity: 0.5; }
+  .step-pending { opacity: 0.4; }
   .step-pending .step-indicator { color: var(--text-dim); }
 
   /* Current / selected step */
   .step-current {
-    border-color: var(--accent) !important;
-    background: var(--accent-soft);
+    border-color: transparent !important;
+    background: var(--selected, rgba(254, 44, 85, 0.08));
     opacity: 1;
   }
 
   .step-current .step-indicator {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(134, 120, 191, 0.15);
+    border-color: var(--spark-red, #FE2C55);
   }
 
   /* Next step bar */
@@ -375,21 +358,19 @@
     align-items: center;
     justify-content: center;
     gap: 0.4rem;
-    background: var(--accent-gradient);
-    color: var(--accent-text);
+    background: var(--text);
+    color: var(--bg);
     border: none;
-    border-radius: 10px;
-    padding: 0.6rem 0.75rem;
-    font-size: 0.82rem;
-    font-weight: 650;
-    font-family: inherit;
+    border-radius: 4px;
+    padding: 0.5rem 0.75rem;
+    font-size: var(--size-sm, 0.8rem);
+    font-weight: 600;
+    font-family: var(--font-body, inherit);
     cursor: pointer;
-    transition: all 0.15s ease;
-    box-shadow: 0 4px 14px rgba(134, 120, 191, 0.2);
+    transition: opacity 0.12s;
   }
 
   .next-step-btn:hover {
-    filter: brightness(1.1);
-    transform: translateY(-1px);
+    opacity: 0.8;
   }
 </style>

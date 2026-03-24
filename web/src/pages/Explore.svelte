@@ -1,9 +1,13 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { t, getLanguage, subscribe } from "../lib/i18n";
   import MarkdownBlock from "../components/MarkdownBlock.svelte";
   import { createTrendWs } from "../lib/ws";
   import ResearchProgress from "../components/ResearchProgress.svelte";
   import InterestTags from "../components/InterestTags.svelte";
+
+  let lang = $state(getLanguage());
+  function tt(key: string): string { void lang; return t(key); }
 
   type Platform = "douyin" | "xiaohongshu";
 
@@ -18,6 +22,9 @@
     exampleHook?: string;
     category?: string;
   }
+
+  type ContentCategory = "info" | "beauty" | "comedy";
+  let activeCategory: ContentCategory = $state("info");
 
   let interests: string[] = $state([]);
   let activePlatform: Platform = $state("douyin");
@@ -37,6 +44,44 @@
   let researchPhase: "idle" | "searching" | "analyzing" | "done" | "error" = $state("idle");
   let streamText = $state("");
   let reportText = $state("");
+  let autoResearchOn = $state(false);
+  let showConfigModal = $state(false);
+  let configInterval = $state("1h");
+  let configModel = $state("sonnet");
+
+  async function loadAutoResearch() {
+    try {
+      const res = await fetch("/api/config");
+      if (res.ok) {
+        const data = await res.json();
+        autoResearchOn = data.autoRun ?? false;
+        configInterval = data.interval ?? "1h";
+        configModel = data.model ?? "sonnet";
+      }
+    } catch {}
+  }
+
+  function openConfigModal() {
+    showConfigModal = true;
+  }
+
+  function closeConfigModal() {
+    showConfigModal = false;
+  }
+
+  async function saveConfig() {
+    autoResearchOn = !autoResearchOn;
+    try {
+      await fetch("/api/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ autoRun: autoResearchOn, interval: configInterval, model: configModel }),
+      });
+    } catch {
+      autoResearchOn = !autoResearchOn;
+    }
+    showConfigModal = false;
+  }
 
   async function loadInterests() {
     try {
@@ -191,7 +236,7 @@
             researchPhase = "done";
             progressLines = [...progressLines, {
               type: "done",
-              text: "调研完成",
+              text: tt("researchDone"),
             }];
             setTimeout(async () => {
               researchActive = false;
@@ -297,165 +342,291 @@
   }
 
   onMount(() => {
+    const unsub = subscribe(() => { lang = getLanguage(); });
     loadTrends();
     loadInterests();
     loadReport();
+    loadAutoResearch();
+    return unsub;
   });
 </script>
 
 <div class="explore">
-  <!-- Header bar -->
-  <div class="header-bar">
-    <div class="header-left">
-      <div class="pill-tabs">
-        <button
-          class="pill-tab"
-          class:active={activePlatform === "douyin"}
-          onclick={() => switchPlatform("douyin")}
-          disabled={researchActive}
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5"/></svg>
-          抖音
-        </button>
-        <button
-          class="pill-tab"
-          class:active={activePlatform === "xiaohongshu"}
-          onclick={() => switchPlatform("xiaohongshu")}
-          disabled={researchActive}
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M8 12h8M12 8v8"/></svg>
-          小红书
-        </button>
-      </div>
-    </div>
-
-    <!-- Primary action button - VERY visible -->
-    <button
-      class="refresh-btn-primary"
-      class:active={researchActive}
-      onclick={researchActive ? handleCancel : handleRefresh}
-      disabled={loading}
-    >
-      {#if researchActive}
-        <svg class="spinning" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-        取消调研
-      {:else}
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        开始调研 {platformLabel}
-      {/if}
+  <!-- Category tabs -->
+  <div class="category-tabs">
+    <button class="cat-tab" class:active={activeCategory === "info"} onclick={() => activeCategory = "info"}>
+      <span class="cat-tab-name">{tt("categoryInfo")}</span>
+      <span class="cat-tab-desc">{tt("categoryInfoDesc")}</span>
+    </button>
+    <button class="cat-tab" class:active={activeCategory === "beauty"} onclick={() => activeCategory = "beauty"}>
+      <span class="cat-tab-name">{tt("categoryBeauty")}</span>
+      <span class="cat-tab-desc">{tt("categoryBeautyDesc")}</span>
+    </button>
+    <button class="cat-tab" class:active={activeCategory === "comedy"} onclick={() => activeCategory = "comedy"}>
+      <span class="cat-tab-name">{tt("categoryComedy")}</span>
+      <span class="cat-tab-desc">{tt("categoryComedyDesc")}</span>
     </button>
   </div>
 
-  <InterestTags {interests} onUpdate={saveInterests} />
-
-  <ResearchProgress
-    active={researchActive}
-    lines={progressLines}
-    phase={researchPhase}
-    {streamText}
-    {reportText}
-    onCancel={handleCancel}
-  />
-
-  <!-- Content -->
-  {#if loading}
-    <div class="loading-state">
-      <div class="loader"></div>
-      <p>正在加载趋势数据...</p>
+  <div class="ranking-grid">
+    <div class="ranking-list">
+      <h3 class="ranking-head">{tt("douyinTab")} · {lang === "zh" ? "热搜榜" : "Hot Search"}</h3>
+      <ol class="ranking-ol">
+        {#each (directions.length > 0 ? directions : []).slice(0, 10) as dir, i}
+          <li class="ranking-item">
+            <span class="ranking-rank" class:top3={i < 3}>{i + 1}</span>
+            <span class="ranking-name">{dir.title}</span>
+            <span class="ranking-heat">{heatDots(dir.heat)}</span>
+          </li>
+        {:else}
+          <li class="ranking-empty">{lang === "zh" ? "暂无数据" : "No data"}</li>
+        {/each}
+      </ol>
     </div>
-  {:else if !hasData && !researchActive}
-    <div class="empty-state">
-      <div class="empty-icon">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      </div>
-      <p class="empty-title">发现 {platformLabel} 热门趋势</p>
-      <p class="empty-desc">点击上方「开始调研」，AI 将自动获取实时热搜并分析内容机会</p>
-      <button class="start-btn" onclick={handleRefresh}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        开始调研
-      </button>
-    </div>
-  {:else if isStructured && directions.length > 0}
-    <div class="trend-grid">
-      {#each directions as dir, i}
-        <div
-          class="trend-card"
-          class:featured={i < 2 && dir.heat >= 4}
-          style="animation-delay: {i * 0.05}s"
-        >
-          <!-- Card top: category + badges -->
-          <div class="card-top">
+
+    <div class="ranking-list">
+      <h3 class="ranking-head">{tt("douyinTab")} · {lang === "zh" ? "涨粉榜" : "Follower Growth"}</h3>
+      <ol class="ranking-ol">
+        {#each (directions.length > 0 ? directions : []).slice(0, 10) as dir, i}
+          <li class="ranking-item">
+            <span class="ranking-rank" class:top3={i < 3}>{i + 1}</span>
+            <span class="ranking-name">{dir.title}</span>
             {#if dir.category}
-              <span class="category-label">{dir.category}</span>
+              <span class="ranking-tag">{dir.category}</span>
             {/if}
-            <div class="card-badges">
-              {#if dir.opportunity}
-                <span class="badge {opportunityColor(dir.opportunity)}">{dir.opportunity}</span>
-              {/if}
-              <span class="badge comp" class:comp-low={dir.competition === "低"} class:comp-mid={dir.competition === "中"} class:comp-high={dir.competition === "高"}>
-                竞争{dir.competition}
-              </span>
-            </div>
-          </div>
-
-          <h3 class="card-title">{dir.title}</h3>
-
-          <div class="heat-row">
-            <span class="heat-dots">{heatDots(dir.heat)}</span>
-          </div>
-
-          {#if dir.description}
-            <p class="card-desc">{dir.description}</p>
-          {/if}
-
-          {#if dir.contentAngles && dir.contentAngles.length > 0}
-            <div class="card-section">
-              <span class="card-section-label">切入角度</span>
-              {#each dir.contentAngles as angle}
-                <div class="angle-item">
-                  <span class="angle-bullet">&#x2023;</span>
-                  {angle}
-                </div>
-              {/each}
-            </div>
-          {/if}
-
-          {#if dir.exampleHook}
-            <div class="card-section">
-              <span class="card-section-label">爆款钩子</span>
-              <p class="hook-quote">&ldquo;{dir.exampleHook}&rdquo;</p>
-            </div>
-          {/if}
-
-          {#if dir.tags && dir.tags.length > 0}
-            <div class="card-tags">
-              {#each dir.tags.slice(0, 5) as tag}
-                <span class="tag">#{tag}</span>
-              {/each}
-            </div>
-          {/if}
-
-          <button class="create-btn" onclick={() => dispatchCreate(dir)}>
-            以此创建作品
-          </button>
-        </div>
-      {/each}
+          </li>
+        {:else}
+          <li class="ranking-empty">{lang === "zh" ? "暂无数据" : "No data"}</li>
+        {/each}
+      </ol>
     </div>
-  {:else if rawContent}
-    <div class="raw-block">
-      <MarkdownBlock text={rawContent} />
+
+    <div class="ranking-list">
+      <h3 class="ranking-head">{tt("xiaohongshuTab")} · {lang === "zh" ? "热搜榜" : "Hot Search"}</h3>
+      <ol class="ranking-ol">
+        {#each (directions.length > 0 ? directions : []).slice(0, 10) as dir, i}
+          <li class="ranking-item">
+            <span class="ranking-rank" class:top3={i < 3}>{i + 1}</span>
+            <span class="ranking-name">{dir.title}</span>
+            <span class="ranking-heat">{heatDots(dir.heat)}</span>
+          </li>
+        {:else}
+          <li class="ranking-empty">{lang === "zh" ? "暂无数据" : "No data"}</li>
+        {/each}
+      </ol>
     </div>
-  {/if}
+
+    <div class="ranking-list">
+      <h3 class="ranking-head">{tt("xiaohongshuTab")} · {lang === "zh" ? "种草榜" : "Trending Products"}</h3>
+      <ol class="ranking-ol">
+        {#each (directions.length > 0 ? directions : []).slice(0, 10) as dir, i}
+          <li class="ranking-item">
+            <span class="ranking-rank" class:top3={i < 3}>{i + 1}</span>
+            <span class="ranking-name">{dir.title}</span>
+            {#if dir.category}
+              <span class="ranking-tag">{dir.category}</span>
+            {/if}
+          </li>
+        {:else}
+          <li class="ranking-empty">{lang === "zh" ? "暂无数据" : "No data"}</li>
+        {/each}
+      </ol>
+    </div>
+  </div>
 </div>
+
+{#if showConfigModal}
+  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+  <div class="config-overlay" onclick={(e) => { if ((e.target as HTMLElement).classList.contains('config-overlay')) closeConfigModal(); }}>
+    <div class="config-modal">
+      <h3 class="config-title">{tt("autoResearchLabel")}</h3>
+      <p class="config-desc">
+        {autoResearchOn ? (lang === "zh" ? "自动调研已开启，关闭后将停止自动调研。" : "Auto research is on. Turn off to stop.") : (lang === "zh" ? "开启后，AI 会按设定频率自动调研热门趋势。" : "AI will automatically research trends at the set interval.")}
+      </p>
+
+      <div class="config-field">
+        <span class="config-label">{tt("researchInterval")}</span>
+        <select bind:value={configInterval}>
+          <option value="15m">{tt("minutes15")}</option>
+          <option value="30m">{tt("minutes30")}</option>
+          <option value="1h">{tt("hour1")}</option>
+          <option value="2h">{tt("hours2")}</option>
+          <option value="4h">{tt("hours4")}</option>
+          <option value="8h">{tt("hours8")}</option>
+        </select>
+      </div>
+
+      <div class="config-field">
+        <span class="config-label">{tt("aiModel")}</span>
+        <select bind:value={configModel}>
+          <option value="haiku">{tt("claudeHaikuFast")}</option>
+          <option value="sonnet">{tt("claudeSonnetBalanced")}</option>
+          <option value="opus">{tt("claudeOpusCapable")}</option>
+        </select>
+      </div>
+
+      <div class="config-actions">
+        <button class="config-cancel" onclick={closeConfigModal}>{tt("cancel")}</button>
+        <button class="config-confirm" onclick={saveConfig}>
+          {autoResearchOn ? (lang === "zh" ? "关闭" : "Turn Off") : (lang === "zh" ? "开启" : "Turn On")}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <style>
   .explore {
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  .explore-title {
+    font-family: var(--font-display);
+    font-size: var(--size-2xl);
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    color: var(--text);
+    margin-bottom: 1.5rem;
+  }
+
+  /* Category tabs */
+  .category-tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .cat-tab {
+    flex: 1;
     display: flex;
     flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+    padding: 0.7rem 0.5rem;
+    border: 1.5px solid var(--border);
+    border-radius: 6px;
+    background: none;
+    color: var(--text-muted);
+    font-family: var(--font-body);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .cat-tab:hover {
+    border-color: var(--text-dim);
+    color: var(--text);
+  }
+
+  .cat-tab.active {
+    border-color: var(--spark-red, #FE2C55);
+    background: rgba(254, 44, 85, 0.06);
+    color: var(--text);
+  }
+
+  .cat-tab-name {
+    font-size: 0.85rem;
+    font-weight: 650;
+  }
+
+  .cat-tab-desc {
+    font-size: 0.65rem;
+    color: var(--text-dim);
+    line-height: 1.2;
+  }
+
+  .cat-tab.active .cat-tab-desc {
+    color: var(--text-muted);
+  }
+
+  .ranking-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
     gap: 1rem;
   }
 
-  /* ── Header ────────────────────────────────────────────── */
+  @media (max-width: 700px) {
+    .ranking-grid { grid-template-columns: 1fr; }
+  }
+
+  .ranking-list {
+    border: 1px solid var(--border);
+    border-radius: var(--card-radius, 6px);
+    overflow: hidden;
+  }
+
+  .ranking-head {
+    font-family: var(--font-display);
+    font-size: var(--size-sm);
+    font-weight: 600;
+    color: var(--text);
+    padding: 0.7rem 0.85rem;
+    border-bottom: 1px solid var(--border);
+    letter-spacing: -0.01em;
+  }
+
+  .ranking-ol {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .ranking-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem 0.85rem;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+  }
+
+  .ranking-item:last-child { border-bottom: none; }
+  .ranking-item:hover { background: var(--accent-soft); }
+
+  .ranking-rank {
+    font-family: var(--font-display);
+    font-size: var(--size-sm);
+    font-weight: 700;
+    color: var(--text-dim);
+    width: 1.5rem;
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  .ranking-rank.top3 {
+    color: var(--spark-red);
+  }
+
+  .ranking-name {
+    flex: 1;
+    font-size: var(--size-sm);
+    font-weight: 500;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ranking-heat {
+    font-size: 0.65rem;
+    flex-shrink: 0;
+  }
+
+  .ranking-tag {
+    font-size: var(--size-xs);
+    color: var(--text-dim);
+    flex-shrink: 0;
+  }
+
+  .ranking-empty {
+    padding: 1.5rem 0.85rem;
+    text-align: center;
+    color: var(--text-dim);
+    font-size: var(--size-sm);
+  }
+
+  /* Keep old styles below for config modal etc */
   .header-bar {
     display: flex;
     align-items: center;
@@ -468,6 +639,171 @@
     display: flex;
     align-items: center;
     gap: 0.75rem;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .auto-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.85rem;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg-surface);
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+  }
+
+  .auto-btn:hover {
+    border-color: var(--text-dim);
+    color: var(--text);
+  }
+
+  .auto-btn.on {
+    border-color: var(--success);
+    color: var(--success);
+  }
+
+  .auto-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    flex-shrink: 0;
+  }
+
+  .auto-dot.on {
+    background: var(--success);
+    box-shadow: 0 0 6px rgba(52, 211, 153, 0.5);
+  }
+
+  /* Config modal */
+  .config-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 1rem;
+    animation: fadeIn 0.15s ease;
+  }
+
+  .config-modal {
+    background: var(--bg-elevated);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    padding: 1.5rem;
+    width: 100%;
+    max-width: 380px;
+    box-shadow: var(--shadow-lg);
+    backdrop-filter: var(--card-blur);
+    animation: scaleIn 0.2s ease;
+  }
+
+  @keyframes scaleIn {
+    from { opacity: 0; transform: scale(0.96); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  .config-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin-bottom: 0.35rem;
+    letter-spacing: -0.02em;
+  }
+
+  .config-desc {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 1.25rem;
+    line-height: 1.5;
+  }
+
+  .config-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin-bottom: 0.85rem;
+  }
+
+  .config-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+
+  .config-field select {
+    background: var(--bg-inset);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.45rem 2rem 0.45rem 0.7rem;
+    font-size: 0.82rem;
+    font-family: inherit;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7194' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.7rem center;
+    cursor: pointer;
+  }
+
+  .config-field select:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  .config-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 1rem;
+  }
+
+  .config-cancel {
+    padding: 0.45rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: none;
+    color: var(--text);
+    font-size: 0.82rem;
+    font-weight: 550;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .config-cancel:hover {
+    background: var(--bg-hover);
+  }
+
+  .config-confirm {
+    padding: 0.45rem 1.25rem;
+    border: none;
+    border-radius: 8px;
+    background: var(--accent-gradient);
+    color: var(--accent-text);
+    font-size: 0.82rem;
+    font-weight: 650;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .config-confirm:hover {
+    filter: brightness(1.1);
   }
 
   .pill-tabs {
@@ -497,7 +833,7 @@
   }
 
   .pill-tab:hover { color: var(--text-secondary); background: rgba(255, 255, 255, 0.04); }
-  .pill-tab.active { background: var(--accent-gradient); color: var(--accent-text); box-shadow: 0 2px 8px rgba(134, 120, 191, 0.25); }
+  .pill-tab.active { background: var(--accent-gradient); color: var(--accent-text); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); }
   .pill-tab.active svg { opacity: 1; }
   .pill-tab svg { opacity: 0.7; }
   .pill-tab:disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
@@ -517,12 +853,12 @@
     font-family: inherit;
     cursor: pointer;
     transition: all 0.2s ease;
-    box-shadow: 0 2px 12px rgba(134, 120, 191, 0.3);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
   }
 
   .refresh-btn-primary:hover:not(:disabled) {
     transform: translateY(-1px);
-    box-shadow: 0 4px 18px rgba(134, 120, 191, 0.4);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
   }
 
   .refresh-btn-primary.active {
@@ -565,7 +901,7 @@
   .loader {
     width: 24px;
     height: 24px;
-    border: 2.5px solid rgba(134, 120, 191, 0.15);
+    border: 2.5px solid rgba(0, 0, 0, 0.15);
     border-top-color: var(--accent);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
@@ -620,12 +956,12 @@
     font-family: inherit;
     cursor: pointer;
     transition: all 0.2s ease;
-    box-shadow: 0 2px 12px rgba(134, 120, 191, 0.3);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
   }
 
   .start-btn:hover {
     transform: translateY(-1px);
-    box-shadow: 0 4px 18px rgba(134, 120, 191, 0.4);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
   }
 
   /* ── Trend grid ────────────────────────────────────────── */
@@ -652,14 +988,14 @@
   }
 
   .trend-card:hover {
-    border-color: rgba(134, 120, 191, 0.3);
+    border-color: rgba(0, 0, 0, 0.3);
     transform: translateY(-2px);
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
   }
 
   .trend-card.featured {
-    border-color: rgba(134, 120, 191, 0.25);
-    background: linear-gradient(135deg, var(--card-bg) 0%, rgba(134, 120, 191, 0.04) 100%);
+    border-color: rgba(0, 0, 0, 0.25);
+    background: linear-gradient(135deg, var(--card-bg) 0%, rgba(0, 0, 0, 0.04) 100%);
   }
 
   @keyframes fadeUp {
@@ -793,8 +1129,8 @@
     margin-top: auto;
     padding: 0.5rem 0.85rem;
     border-radius: 8px;
-    border: 1px solid rgba(134, 120, 191, 0.2);
-    background: rgba(134, 120, 191, 0.06);
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    background: rgba(0, 0, 0, 0.06);
     color: var(--accent);
     font-size: 0.78rem;
     font-weight: 620;
@@ -808,7 +1144,7 @@
     background: var(--accent-gradient);
     color: var(--accent-text);
     border-color: transparent;
-    box-shadow: 0 2px 8px rgba(134, 120, 191, 0.2);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   }
 
   /* ── Raw content ───────────────────────────────────────── */

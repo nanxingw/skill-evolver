@@ -264,35 +264,6 @@
         </label>
       </div>
 
-      <div class="toolbar-right">
-        <!-- Grid size -->
-        <div class="size-btns">
-          {#each (["large", "medium", "small"] as const) as size}
-            <button
-              class="size-btn"
-              class:active={gridSize === size}
-              onclick={() => { gridSize = size; }}
-              title={size === "large" ? "大图" : size === "medium" ? "中图" : "小图"}
-            >
-              {#if size === "large"}
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/></svg>
-              {:else if size === "medium"}
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="5" height="5" rx="1"/><rect x="10" y="3" width="5" height="5" rx="1"/><rect x="17" y="3" width="5" height="5" rx="1"/><rect x="3" y="10" width="5" height="5" rx="1"/><rect x="10" y="10" width="5" height="5" rx="1"/><rect x="17" y="10" width="5" height="5" rx="1"/><rect x="3" y="17" width="5" height="5" rx="1"/><rect x="10" y="17" width="5" height="5" rx="1"/><rect x="17" y="17" width="5" height="5" rx="1"/></svg>
-              {:else}
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-              {/if}
-            </button>
-          {/each}
-        </div>
-
-        <!-- Download all -->
-        {#if files.length > 0}
-          <button class="toolbar-btn" onclick={handleDownloadAll}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            全部下载
-          </button>
-        {/if}
-      </div>
     </div>
 
     <!-- ── Main Area ────────────────────────────────────────────────────── -->
@@ -622,7 +593,7 @@
   }
 
   .cat-tab.active {
-    background: var(--accent, #8678bf);
+    background: var(--accent, #e8e8e8);
     color: #fff;
     box-shadow: 0 2px 8px rgba(134,120,191,0.3);
   }
@@ -660,13 +631,13 @@
 
   .toolbar-btn:hover {
     color: var(--text, rgba(255,255,255,0.9));
-    border-color: var(--accent, #8678bf);
+    border-color: var(--accent, #e8e8e8);
     background: rgba(134,120,191,0.08);
   }
 
   .toolbar-btn.active {
-    color: var(--accent, #8678bf);
-    border-color: var(--accent, #8678bf);
+    color: var(--accent, #e8e8e8);
+    border-color: var(--accent, #e8e8e8);
     background: rgba(134,120,191,0.1);
   }
 
@@ -687,8 +658,8 @@
   }
 
   .upload-label:hover {
-    color: var(--accent, #8678bf);
-    border-color: var(--accent, #8678bf);
+    color: var(--accent, #e8e8e8);
+    border-color: var(--accent, #e8e8e8);
     background: rgba(134,120,191,0.08);
   }
 
@@ -730,7 +701,7 @@
   }
 
   .size-btn.active {
-    color: var(--accent, #8678bf);
+    color: var(--accent, #e8e8e8);
     background: rgba(134,120,191,0.12);
   }
 
@@ -794,7 +765,7 @@
   .shared-cat-tab:hover { color: var(--text, rgba(255,255,255,0.9)); }
   .shared-cat-tab.active {
     background: rgba(134,120,191,0.15);
-    color: var(--accent, #8678bf);
+    color: var(--accent, #e8e8e8);
   }
 
   .shared-panel-body {
@@ -905,7 +876,7 @@
     border-radius: 10px;
     border: 1px dashed rgba(134,120,191,0.35);
     background: rgba(134,120,191,0.06);
-    color: var(--accent, #8678bf);
+    color: var(--accent, #e8e8e8);
     font-size: 0.8rem;
     font-weight: 600;
     font-family: inherit;
@@ -914,7 +885,7 @@
   }
 
   .empty-upload-btn:hover {
-    border-color: var(--accent, #8678bf);
+    border-color: var(--accent, #e8e8e8);
     background: rgba(134,120,191,0.12);
   }
 
@@ -946,7 +917,7 @@
   }
 
   .asset-card.selected {
-    border-color: var(--accent, #8678bf);
+    border-color: var(--accent, #e8e8e8);
     box-shadow: 0 0 0 2px rgba(134,120,191,0.25), 0 8px 24px rgba(0,0,0,0.3);
     transform: scale(1.02);
   }
@@ -1041,7 +1012,7 @@
 
   /* ── Selection panel ─────────────────────────────────────────────────── */
   .selection-panel {
-    border: 1px solid var(--accent, #8678bf);
+    border: 1px solid var(--accent, #e8e8e8);
     border-radius: 14px;
     background: rgba(134,120,191,0.05);
     display: flex;
@@ -1131,14 +1102,14 @@
   }
 
   .action-btn:hover {
-    border-color: var(--accent, #8678bf);
-    color: var(--accent, #8678bf);
+    border-color: var(--accent, #e8e8e8);
+    color: var(--accent, #e8e8e8);
     background: rgba(134,120,191,0.08);
   }
 
   .action-btn.primary {
     border-color: rgba(134,120,191,0.3);
-    color: var(--accent, #8678bf);
+    color: var(--accent, #e8e8e8);
     background: rgba(134,120,191,0.08);
   }
 
@@ -1175,7 +1146,7 @@
 
   .ai-input:focus {
     outline: none;
-    border-color: var(--accent, #8678bf);
+    border-color: var(--accent, #e8e8e8);
     background: rgba(134,120,191,0.05);
   }
 
@@ -1190,7 +1161,7 @@
     padding: 0.5rem 0.9rem;
     border-radius: 10px;
     border: none;
-    background: var(--accent, #8678bf);
+    background: var(--accent, #e8e8e8);
     color: #fff;
     font-size: 0.75rem;
     font-weight: 700;
@@ -1289,8 +1260,8 @@
   }
 
   .output-dl-btn:hover {
-    border-color: var(--accent, #8678bf);
-    color: var(--accent, #8678bf);
+    border-color: var(--accent, #e8e8e8);
+    color: var(--accent, #e8e8e8);
     background: rgba(134,120,191,0.08);
   }
 
@@ -1318,7 +1289,7 @@
     width: 14px;
     height: 14px;
     border: 2px solid rgba(134,120,191,0.15);
-    border-top-color: var(--accent, #8678bf);
+    border-top-color: var(--accent, #e8e8e8);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
     flex-shrink: 0;

@@ -208,7 +208,7 @@
     background: var(--accent);
     flex-shrink: 0;
     margin-top: 0.4rem;
-    box-shadow: 0 0 8px rgba(134, 120, 191, 0.35);
+    box-shadow: 0 0 8px rgba(0, 0, 0, 0.35);
   }
 
   .profile-text {

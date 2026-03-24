@@ -7,11 +7,18 @@
     workId,
     visible = false,
     refreshTrigger = 0,
+    showOutput = false,
   }: {
     workId: string;
     visible: boolean;
     refreshTrigger: number;
+    showOutput?: boolean;
   } = $props();
+
+  // When showOutput changes to true, switch to output tab
+  $effect(() => {
+    if (showOutput) activeSection = "output";
+  });
 
   let lang = $state(getLanguage());
   function tt(key: string): string { void lang; return t(key); }
@@ -237,6 +244,20 @@
             {/each}
           {/if}
         {/if}
+
+        <!-- Upload button at bottom of assets tab -->
+        <label class="upload-btn-bottom">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          {tt("uploadAsset")}
+          <input type="file" class="sr-only" onchange={(e) => {
+            const file = (e.target as HTMLInputElement).files?.[0];
+            if (!file) return;
+            const formData = new FormData();
+            formData.append("file", file);
+            formData.append("path", "clips/" + file.name);
+            fetch(`/api/works/${encodeURIComponent(workId)}/assets/upload`, { method: "POST", body: formData }).then(() => loadAssets()).catch(() => {});
+          }} />
+        </label>
 
       {:else}
         <!-- Output section -->
@@ -678,5 +699,41 @@
     flex: 1;
     overflow-y: auto;
     padding: 1rem;
+  }
+
+  .upload-btn-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    width: 100%;
+    padding: 0.55rem;
+    margin-top: 0.75rem;
+    border: 1px dashed var(--border);
+    border-radius: 4px;
+    background: none;
+    color: var(--text-muted);
+    font-family: var(--font-body, inherit);
+    font-size: var(--size-sm, 0.8rem);
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+
+  .upload-btn-bottom:hover {
+    border-color: var(--text-dim);
+    color: var(--text-secondary);
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 </style>

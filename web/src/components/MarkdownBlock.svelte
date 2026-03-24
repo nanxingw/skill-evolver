@@ -114,7 +114,7 @@
     font-size: 0.8rem;
   }
   .md-rendered :global(th) {
-    background: rgba(134, 120, 191, 0.1);
+    background: rgba(0, 0, 0, 0.1);
     font-weight: 650;
     text-align: left;
     padding: 0.45rem 0.65rem;
@@ -161,7 +161,7 @@
     padding: 0.3rem 0.75rem;
     margin: 0.4rem 0;
     color: var(--text-muted);
-    background: rgba(134, 120, 191, 0.04);
+    background: rgba(0, 0, 0, 0.04);
     border-radius: 0 6px 6px 0;
   }
 

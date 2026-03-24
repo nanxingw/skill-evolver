@@ -7,130 +7,165 @@ const translations: Record<Language, Record<string, string>> = {
     works: "Works",
     analytics: "Analytics",
     settings: "Settings",
-    newWork: "New Work",
-
-    // Config
-    researchConfig: "Research Configuration",
-    researchInterval: "Research Interval",
-    aiModel: "AI Model",
-    autoResearch: "Auto Research",
-    startResearch: "Start Research",
-    researchingDots: "Researching...",
-    researchStarted: "Research started successfully!",
-    researchFailed: "Failed to start research.",
-    claudeHaikuFast: "Claude Haiku (Fast)",
-    claudeSonnetBalanced: "Claude Sonnet (Balanced)",
-    claudeOpusCapable: "Claude Opus (Most Capable)",
-    minutes15: "Every 15 minutes",
-    minutes30: "Every 30 minutes",
-    hour1: "Every 1 hour",
-    hours2: "Every 2 hours",
-    hours4: "Every 4 hours",
-    hours8: "Every 8 hours",
 
     // Common
-    saveChanges: "Save Changes",
+    saveChanges: "Save",
     saving: "Saving...",
-    settingsSaved: "Settings saved successfully.",
-    settingsSaveFailed: "Failed to save settings.",
+    settingsSaved: "Saved.",
+    settingsSaveFailed: "Failed to save.",
     loading: "Loading...",
     cancel: "Cancel",
     create: "Create",
     send: "Send",
+    done: "Done",
+    back: "Back",
+    delete: "Delete",
+    confirmDelete: "Confirm delete?",
 
     // Works page
-    myWorks: "My Works",
-    noWorks: "No works yet. Create your first one!",
+    myWorks: "Works",
+    workList: "Works",
+    newWork: "New",
+    abortTask: "Abort",
+    resumeTask: "Resume",
+    abortedMessage: "Generation aborted.",
+    pipelineSteps: "Steps",
+    noWorks: "No works yet",
+    noDrafts: "No drafts",
+    noDraftsDesc: "All your works have been published",
+    noPublished: "No published works",
+    noPublishedDesc: "Finish creating a work and publish it",
     createFirstWork: "Create your first work",
     filterAll: "All",
-    filterCreating: "Creating",
-    filterReady: "Ready",
+    filterDraft: "Drafts",
+    filterPublished: "Published",
     shortVideo: "Short Video",
     imageText: "Image & Text",
 
     // Work status
     workDraft: "Draft",
-    workCreating: "Creating",
-    workReady: "Ready",
+    workCreating: "Draft",
+    workReady: "Published",
     workFailed: "Failed",
+    monitoring: "Monitoring",
+
+    // Insight banner
+    autoResearchLabel: "Auto Research",
+    insightBannerWithData: "While you were away, I researched {competitors} competitors and found ",
+    inspirationTitle: "Viral Ideas",
+    insightBannerEmpty: "Turn on Auto Research to discover viral ideas while you're away.",
+    viralIdeas: " viral ideas",
+    viralIdeasSuffix: ".",
 
     // NewWorkModal
-    newWorkBtn: "New Work",
-    selectType: "Content Type",
-    selectPlatforms: "Platforms",
-    topicHint: "Topic Hint",
-    topicHintPlaceholder: "Enter direction you want to create (optional)",
-    titlePlaceholder: "Optional — AI will generate if empty",
-    resultTitle: "Title",
-
-    // Video source
+    newWorkTitle: "New Work",
+    selectType: "Format",
     videoSource: "Video Source",
     videoSourceUpload: "Upload",
     videoSourceSearch: "Web Search",
-    videoSourceSearchHint: "AI will search and download matching videos from the web",
-    videoSourceUploadHint: "Upload your own video clips",
     videoSourceAI: "AI Generate",
-    videoSourceAIHint: "AI will generate video clips using Jimeng API",
-    videoSearchPlaceholder: "Describe the video content you want to find...",
-
-    // Content categories
-    contentCategory: "Content Category",
-    categoryInfo: "Info / Knowledge",
-    categoryBeauty: "Beauty / Talent",
-    categoryComedy: "Comedy / Abstract",
-    categoryInfoDesc: "Tutorials, tips, educational",
-    categoryBeautyDesc: "Aesthetic, dance, fashion",
-    categoryComedyDesc: "Funny skits, absurdist humor",
+    videoSourceUploadHint: "Upload your own video clips",
+    videoSourceSearchHint: "AI searches and downloads matching videos",
+    videoSourceAIHint: "Generate video clips with Jimeng AI",
+    videoSearchPlaceholder: "Describe the video you're looking for...",
+    contentCategory: "Category",
+    categoryInfo: "Knowledge",
+    categoryBeauty: "Aesthetic",
+    categoryComedy: "Comedy",
+    categoryInfoDesc: "Tutorials, tips, how-to",
+    categoryBeautyDesc: "Visual, dance, fashion",
+    categoryComedyDesc: "Skits, absurdist humor",
+    resultTitle: "Title",
+    titlePlaceholder: "Optional — AI generates if empty",
+    topicHint: "Direction",
+    topicHintPlaceholder: "What do you want to create? (optional)",
 
     // Platforms
     xiaohongshu: "Xiaohongshu",
     douyin: "Douyin",
 
-    // Studio & Chat
+    // Studio
     studio: "Studio",
-    chatPlaceholder: "Type your feedback...",
-    chatWithAgent: "Chat with Agent",
+    chatPlaceholder: "Type a message...",
+    emptyChat: "Start a conversation",
     sessionConnecting: "Connecting...",
-    sessionReady: "Agent Ready",
+    sessionReady: "Ready",
+    sessionCompleted: "Completed",
     nextStep: "Next Step",
-    redoStep: "Redo Step",
+    redoStep: "Redo",
     publish: "Publish",
-    pipelineSteps: "Pipeline Steps",
     backToHome: "Back",
+    chatMode: "Chat",
+    canvasMode: "Canvas",
 
-    // Pipeline step statuses
+    // Pipeline steps
     stepPendingLabel: "Pending",
     stepRunningLabel: "Running...",
-    stepCompletedLabel: "Completed",
+    stepCompletedLabel: "Done",
     stepFailedLabel: "Failed",
-
-    // 4 pipeline steps
-    stepMaterialSearch: "Material Search",
+    stepMaterialSearch: "Search",
     stepResearch: "Research",
     stepPlan: "Plan",
     stepAssets: "Assets",
-    stepAssembly: "Assembly",
+    stepAssembly: "Assemble",
 
-    // Explore page
-    ytTrending: "YouTube Trending",
-    ttTrending: "TikTok Trending",
-    ytTags: "YouTube Hot Topics",
-    ttTags: "TikTok Hot Topics",
-    views: "views",
-    likes: "likes",
-    comments: "comments",
-    posts: "posts",
+    // Tool display names
+    toolSearching: "Searching...",
+    toolFetching: "Fetching page...",
+    toolRunning: "Running command...",
+    toolReading: "Reading file...",
+    toolWriting: "Writing file...",
+    toolEditing: "Editing file...",
+    toolGrepping: "Searching code...",
+    toolGlobbing: "Finding files...",
+    toolDefault: "Running {name}...",
 
-    // Analytics page
+    // Research progress
+    researchDone: "Research complete",
+
+    // Explore / Inspiration page
+    startResearch: "Research",
+    cancelResearch: "Cancel",
+    loadingTrends: "Loading trends...",
+    emptyTrendsTitle: "No trends yet",
+    emptyTrendsDesc: "Click Research above to discover trending topics",
+    viralHook: "Hook",
+    createFromTrend: "Create from this",
+
+    // Explore — platform tabs
+    douyinTab: "Douyin",
+    xiaohongshuTab: "Xiaohongshu",
+    douyinTrending: "Douyin Trending",
+    xiaohongshuTrending: "Xiaohongshu Trending",
+
+    // Interest tags
+    following: "Following",
+
+    // Config
+    researchConfig: "Research Config",
+    researchInterval: "Interval",
+    aiModel: "AI Model",
+    autoResearch: "Auto Research",
+    claudeHaikuFast: "Haiku (Fast)",
+    claudeSonnetBalanced: "Sonnet (Balanced)",
+    claudeOpusCapable: "Opus (Capable)",
+    minutes15: "15 min",
+    minutes30: "30 min",
+    hour1: "1 hour",
+    hours2: "2 hours",
+    hours4: "4 hours",
+    hours8: "8 hours",
+
+    // Analytics
     followers: "Followers",
-    todayLikes: "Today Likes",
-    todayComments: "Today Comments",
+    todayLikes: "Likes Today",
+    todayComments: "Comments Today",
     styleKeywords: "Style Profile",
-    fanDemographics: "Fan Demographics",
-    ageDistribution: "Age Distribution",
-    genderSplit: "Gender Split",
-    topRegions: "Top Regions",
-    latestInsights: "Latest Research Insights",
+    fanDemographics: "Audience",
+    ageDistribution: "Age",
+    genderSplit: "Gender",
+    topRegions: "Regions",
+    latestInsights: "Latest Insights",
     male: "Male",
     female: "Female",
 
@@ -139,23 +174,20 @@ const translations: Record<Language, Record<string, string>> = {
     styleProfile: "Style Profile",
     learnedRules: "Learned Rules",
     memorySearch: "Search memory",
-    tabMemory: "Memory",
 
     // Assets
     assets: "Assets",
     output: "Output",
     downloadAll: "Download All",
     noAssetsYet: "No assets yet",
+    uploadAsset: "Upload",
 
-    // Settings panel
+    // Settings
     settingsTitle: "Settings",
     languageSetting: "Language",
     themeSetting: "Theme",
     darkTheme: "Dark",
     lightTheme: "Light",
-
-    // Misc
-    confirmDelete: "Confirm delete?",
   },
   zh: {
     // Navigation
@@ -163,121 +195,156 @@ const translations: Record<Language, Record<string, string>> = {
     works: "作品",
     analytics: "数据",
     settings: "设置",
-    newWork: "新建作品",
+
+    // Common
+    saveChanges: "保存",
+    saving: "保存中...",
+    settingsSaved: "已保存",
+    settingsSaveFailed: "保存失败",
+    loading: "加载中...",
+    cancel: "取消",
+    create: "创建",
+    send: "发送",
+    done: "完成",
+    back: "返回",
+    delete: "删除",
+    confirmDelete: "确认删除？",
+
+    // Works page
+    myWorks: "作品",
+    workList: "作品列表",
+    newWork: "新建",
+    abortTask: "中止",
+    resumeTask: "继续",
+    abortedMessage: "已中止生成",
+    pipelineSteps: "流水线",
+    noWorks: "还没有作品",
+    noDrafts: "没有草稿",
+    noDraftsDesc: "所有作品都已发布",
+    noPublished: "没有已发布的作品",
+    noPublishedDesc: "完成创作后发布你的第一个作品",
+    createFirstWork: "创建你的第一个作品",
+    filterAll: "全部",
+    filterDraft: "草稿",
+    filterPublished: "已发布",
+    shortVideo: "短视频",
+    imageText: "图文",
+
+    // Work status
+    workDraft: "草稿",
+    workCreating: "草稿",
+    workReady: "已发布",
+    workFailed: "失败",
+    monitoring: "监测中",
+
+    // Insight banner
+    autoResearchLabel: "自动调研",
+    insightBannerWithData: "在你离开的时候，我调研了 {competitors} 个竞品，总结出了 ",
+    inspirationTitle: "爆款思路",
+    insightBannerEmpty: "开启「自动调研」，让 AI 在你不在时自动发现爆款灵感",
+    viralIdeas: " 个爆款思路",
+    viralIdeasSuffix: "。",
+
+    // NewWorkModal
+    newWorkTitle: "新建作品",
+    selectType: "内容形式",
+    videoSource: "视频来源",
+    videoSourceUpload: "自己上传",
+    videoSourceSearch: "全网搜索",
+    videoSourceAI: "AI 生成",
+    videoSourceUploadHint: "上传已有的视频素材",
+    videoSourceSearchHint: "AI 在网上搜索并下载匹配的视频",
+    videoSourceAIHint: "使用即梦 AI 生成视频片段",
+    videoSearchPlaceholder: "描述你想搜索的视频内容...",
+    contentCategory: "内容品类",
+    categoryInfo: "知识",
+    categoryBeauty: "审美",
+    categoryComedy: "搞笑",
+    categoryInfoDesc: "教程、干货、知识分享",
+    categoryBeautyDesc: "颜值、舞蹈、穿搭",
+    categoryComedyDesc: "搞笑短剧、抽象内容",
+    resultTitle: "标题",
+    titlePlaceholder: "可选，不填则 AI 自动生成",
+    topicHint: "创作方向",
+    topicHintPlaceholder: "你想做什么内容？（可选）",
+
+    // Platforms
+    xiaohongshu: "小红书",
+    douyin: "抖音",
+
+    // Studio
+    studio: "工作台",
+    chatPlaceholder: "输入消息...",
+    emptyChat: "开始对话",
+    sessionConnecting: "连接中...",
+    sessionReady: "就绪",
+    sessionCompleted: "已完成",
+    nextStep: "下一步",
+    redoStep: "重做",
+    publish: "发布",
+    backToHome: "返回",
+    chatMode: "对话",
+    canvasMode: "画布",
+
+    // Pipeline steps
+    stepPendingLabel: "待开始",
+    stepRunningLabel: "进行中...",
+    stepCompletedLabel: "已完成",
+    stepFailedLabel: "失败",
+    stepMaterialSearch: "素材搜索",
+    stepResearch: "调研",
+    stepPlan: "策划",
+    stepAssets: "素材",
+    stepAssembly: "合成",
+
+    // Tool display names
+    toolSearching: "正在搜索...",
+    toolFetching: "正在获取网页...",
+    toolRunning: "正在执行命令...",
+    toolReading: "正在读取文件...",
+    toolWriting: "正在写入文件...",
+    toolEditing: "正在编辑文件...",
+    toolGrepping: "正在搜索代码...",
+    toolGlobbing: "正在查找文件...",
+    toolDefault: "正在执行 {name}...",
+
+    // Research progress
+    researchDone: "调研完成",
+
+    // Explore / Inspiration page
+    startResearch: "开始调研",
+    cancelResearch: "取消调研",
+    loadingTrends: "加载趋势数据中...",
+    emptyTrendsTitle: "暂无趋势数据",
+    emptyTrendsDesc: "点击上方「开始调研」发现热门话题",
+    viralHook: "爆款钩子",
+    createFromTrend: "以此创建",
+
+    // Explore — platform tabs
+    douyinTab: "抖音",
+    xiaohongshuTab: "小红书",
+    douyinTrending: "抖音热门",
+    xiaohongshuTrending: "小红书热门",
+
+    // Interest tags
+    following: "关注中",
 
     // Config
     researchConfig: "调研配置",
     researchInterval: "调研频率",
     aiModel: "AI 模型",
     autoResearch: "自动调研",
-    startResearch: "开始调研",
-    researchingDots: "调研中...",
-    researchStarted: "调研已成功启动！",
-    researchFailed: "启动调研失败。",
-    claudeHaikuFast: "Claude Haiku（快速）",
-    claudeSonnetBalanced: "Claude Sonnet（平衡）",
-    claudeOpusCapable: "Claude Opus（最强大）",
-    minutes15: "每 15 分钟",
-    minutes30: "每 30 分钟",
-    hour1: "每 1 小时",
-    hours2: "每 2 小时",
-    hours4: "每 4 小时",
-    hours8: "每 8 小时",
+    claudeHaikuFast: "Haiku（快速）",
+    claudeSonnetBalanced: "Sonnet（平衡）",
+    claudeOpusCapable: "Opus（最强）",
+    minutes15: "15 分钟",
+    minutes30: "30 分钟",
+    hour1: "1 小时",
+    hours2: "2 小时",
+    hours4: "4 小时",
+    hours8: "8 小时",
 
-    // Common
-    saveChanges: "保存更改",
-    saving: "保存中...",
-    settingsSaved: "设置保存成功。",
-    settingsSaveFailed: "保存设置失败。",
-    loading: "加载中...",
-    cancel: "取消",
-    create: "创建",
-    send: "发送",
-
-    // Works page
-    myWorks: "我的作品",
-    noWorks: "还没有作品，创建第一个吧！",
-    createFirstWork: "创建你的第一个作品",
-    filterAll: "全部",
-    filterCreating: "创建中",
-    filterReady: "已完成",
-    shortVideo: "短视频",
-    imageText: "图文",
-
-    // Work status
-    workDraft: "草稿",
-    workCreating: "创作中",
-    workReady: "待发布",
-    workFailed: "失败",
-
-    // NewWorkModal
-    newWorkBtn: "新建作品",
-    selectType: "内容类型",
-    selectPlatforms: "发布平台",
-    topicHint: "选题提示",
-    topicHintPlaceholder: "输入你想创建的方向（可选）",
-    titlePlaceholder: "可选，不填则AI自动生成",
-    resultTitle: "标题",
-
-    // Video source
-    videoSource: "视频来源",
-    videoSourceUpload: "自己上传",
-    videoSourceSearch: "全网搜索",
-    videoSourceSearchHint: "AI 将在网上搜索并下载匹配的视频素材",
-    videoSourceUploadHint: "上传你自己的视频素材",
-    videoSourceAI: "AI 生成",
-    videoSourceAIHint: "使用即梦 API 生成视频片段",
-    videoSearchPlaceholder: "描述你想搜索的视频内容...",
-
-    // Content categories
-    contentCategory: "内容品类",
-    categoryInfo: "信息 / 知识类",
-    categoryBeauty: "颜值 / 才艺类",
-    categoryComedy: "搞笑 / 抽象类",
-    categoryInfoDesc: "教程、干货、知识分享",
-    categoryBeautyDesc: "审美、舞蹈、穿搭",
-    categoryComedyDesc: "搞笑短剧、抽象内容",
-
-    // Platforms
-    xiaohongshu: "小红书",
-    douyin: "抖音",
-
-    // Studio & Chat
-    studio: "创作工坊",
-    chatPlaceholder: "输入反馈...",
-    chatWithAgent: "与Agent对话",
-    sessionConnecting: "连接中...",
-    sessionReady: "Agent就绪",
-    nextStep: "下一步",
-    redoStep: "重做此步",
-    publish: "发布",
-    pipelineSteps: "流水线步骤",
-    backToHome: "返回",
-
-    // Pipeline step statuses
-    stepPendingLabel: "待开始",
-    stepRunningLabel: "生成中...",
-    stepCompletedLabel: "已完成",
-    stepFailedLabel: "失败",
-
-    // 4 pipeline steps
-    stepMaterialSearch: "素材搜索",
-    stepResearch: "调研",
-    stepPlan: "策划",
-    stepAssets: "素材",
-    stepAssembly: "成片",
-
-    // Explore page
-    ytTrending: "抖音热门视频",
-    ttTrending: "小红书热门视频",
-    ytTags: "抖音热门话题",
-    ttTags: "小红书热门话题",
-    views: "播放",
-    likes: "点赞",
-    comments: "评论",
-    posts: "内容",
-
-    // Analytics page
+    // Analytics
     followers: "粉丝",
     todayLikes: "今日点赞",
     todayComments: "今日评论",
@@ -286,7 +353,7 @@ const translations: Record<Language, Record<string, string>> = {
     ageDistribution: "年龄分布",
     genderSplit: "性别比例",
     topRegions: "地区分布",
-    latestInsights: "最新调研洞察",
+    latestInsights: "最新洞察",
     male: "男",
     female: "女",
 
@@ -295,23 +362,20 @@ const translations: Record<Language, Record<string, string>> = {
     styleProfile: "风格画像",
     learnedRules: "已学规则",
     memorySearch: "搜索记忆",
-    tabMemory: "记忆",
 
     // Assets
     assets: "素材",
     output: "成品",
     downloadAll: "下载全部",
     noAssetsYet: "暂无素材",
+    uploadAsset: "自己上传",
 
-    // Settings panel
+    // Settings
     settingsTitle: "设置",
     languageSetting: "语言",
     themeSetting: "主题",
     darkTheme: "深色",
     lightTheme: "浅色",
-
-    // Misc
-    confirmDelete: "确认删除?",
   },
 };
 
