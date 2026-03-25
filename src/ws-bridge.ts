@@ -162,7 +162,10 @@ export class WsBridge {
 | 素材生成 (assets) | ~/.claude/skills/asset-generation/SKILL.md | AI生图/生视频提示词工程、风格一致性 |
 | 内容合成 (assembly) | ~/.claude/skills/content-assembly/SKILL.md | ffmpeg剪辑、字幕、配乐、发布文案 |
 
-每个 skill 下还有 references/ 子目录，包含抖音和小红书的平台专属知识。根据目标平台阅读对应的 references/douyin.md 或 references/xiaohongshu.md。
+每个 skill 下还有以下子目录，请按需阅读：
+- **references/** — 平台专属知识。根据目标平台阅读 references/douyin.md 或 references/xiaohongshu.md
+- **genres/** — 垂类专项指南。如果作品有明确的内容品类（如 comedy 搞笑/抽象），阅读 genres/<type>.md 获取该品类在该阶段的专项规则（结构公式、视觉风格、剪辑节奏等），这些规则覆盖 SKILL.md 中的通用指导
+- **modules/** — 扩展能力模块。如需达人数据采集等能力，阅读 modules/ 下对应的文件
 
 ## 你的能力
 - 调研：使用WebSearch搜索 + 数据获取脚本（详见 trend-research skill）

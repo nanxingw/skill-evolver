@@ -832,7 +832,7 @@ apiRoutes.post("/api/works/:id/step/:step", async (c) => {
         promptParts.push(
           ``,
           `## IMPORTANT: This is comedy/abstract content (搞笑/抽象类).`,
-          `You MUST read skills/viral-comedy/SKILL.md and apply its rules to this step.`,
+          `You MUST read the genres/comedy.md file in the current step's skill directory and apply its rules.`,
         );
         const comedyByStep: Record<string, string> = {
           research: [
@@ -843,7 +843,7 @@ apiRoutes.post("/api/works/:id/step/:step", async (c) => {
             `- Identifying comedy hooks and BGM trends`,
           ].join("\n"),
           plan: [
-            `For the planning step, the script/storyboard MUST follow viral-comedy structure:`,
+            `For the planning step, the script/storyboard MUST follow the comedy genre rules (see genres/comedy.md):`,
             `- Choose a specific structure from the 7 comedy types or 7 abstract types in the skill`,
             `- Design the Hook (first 3 seconds) using the Hook types table`,
             `- Write dialogue following the comedy dialogue rules (短句为王, 口语化, 留白)`,
