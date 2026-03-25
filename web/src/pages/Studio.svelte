@@ -6,8 +6,6 @@
   import PipelineSteps from "../components/PipelineSteps.svelte";
   import MarkdownBlock from "../components/MarkdownBlock.svelte";
   import AssetPanel from "../components/AssetPanel.svelte";
-  import CanvasWorkspace from "../components/CanvasWorkspace.svelte";
-
   interface AskQuestion {
     question: string;
     header: string;
@@ -39,6 +37,7 @@
   let scrollEl: HTMLDivElement | undefined = $state();
   let wsConn: { send: (text: string) => void; close: () => void } | null = null;
   let showNextStep = $state(false);
+  let aborted = $state(false);
   let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Derived: check if all steps done or any pending
@@ -51,27 +50,27 @@
 
   // Asset panel refresh
   let assetRefresh = $state(0);
+  let showOutputTab = $state(false);
 
-  // Studio layout mode: "chat" (3-column with chat) or "canvas" (2-column with canvas workspace)
-  type StudioMode = "chat" | "canvas";
-  let studioMode: StudioMode = $state("chat");
+  // Auto-advance to next step when current step completes
+  $effect(() => {
+    if (showNextStep && !streaming && work?.pipeline) {
+      const keys = Object.keys(work.pipeline);
+      const currentIdx = keys.indexOf(currentStep);
+      if (currentIdx >= 0 && currentIdx < keys.length - 1) {
+        const nextKey = keys[currentIdx + 1];
+        if (work.pipeline[nextKey]?.status === "pending") {
+          setTimeout(() => triggerStep(nextKey), 800);
+        }
+      }
+    }
+  });
 
   function resetInactivityTimer() {
     if (inactivityTimer) clearTimeout(inactivityTimer);
     inactivityTimer = setTimeout(() => {
       if (streaming) { streaming = false; showNextStep = true; }
     }, 60000);
-  }
-
-  const statusLabels: Record<string, string> = {
-    draft: "workDraft", creating: "workCreating", ready: "workReady", failed: "workFailed",
-  };
-
-  function statusBadgeClass(s: string): string {
-    if (s === "ready") return "badge-success";
-    if (s === "failed") return "badge-error";
-    if (s === "creating") return "badge-running";
-    return "badge-default";
   }
 
   function handleCanvasSend(text: string) {
@@ -104,18 +103,44 @@
     handleSend();
   }
 
+  function handleAbort() {
+    wsConn?.close();
+    wsConn = null;
+    streaming = false;
+    activeToolName = "";
+    showNextStep = false;
+    aborted = true;
+    streamBlocks = [...streamBlocks, { type: "step_divider", text: tt("abortedMessage") }];
+    scrollToBottom();
+  }
+
+  function handleResume() {
+    if (!work || streaming) return;
+    aborted = false;
+    // Reconnect WS and re-trigger current step
+    wsConn = createWorkWs(workId, wsHandler);
+    setTimeout(() => {
+      if (currentStep && work?.pipeline[currentStep]) {
+        const status = work.pipeline[currentStep].status;
+        if (status === "active" || status === "pending") {
+          triggerStep(currentStep);
+        }
+      }
+    }, 300);
+  }
+
   function toolDisplayName(name: string): string {
     const map: Record<string, string> = {
-      WebSearch: "正在搜索...",
-      WebFetch: "正在获取网页...",
-      Bash: "正在执行命令...",
-      Read: "正在读取文件...",
-      Write: "正在写入文件...",
-      Edit: "正在编辑文件...",
-      Grep: "正在搜索代码...",
-      Glob: "正在查找文件...",
+      WebSearch: tt("toolSearching"),
+      WebFetch: tt("toolFetching"),
+      Bash: tt("toolRunning"),
+      Read: tt("toolReading"),
+      Write: tt("toolWriting"),
+      Edit: tt("toolEditing"),
+      Grep: tt("toolGrepping"),
+      Glob: tt("toolGlobbing"),
     };
-    return map[name] ?? `正在执行 ${name}...`;
+    return map[name] ?? tt("toolDefault").replace("{name}", name);
   }
 
   function scrollToBottom() {
@@ -170,6 +195,91 @@
     scrollToBottom();
   }
 
+  function wsHandler(event: string, data: any) {
+    if (event === "pipeline_updated" && data.pipeline && work) {
+      work.pipeline = data.pipeline;
+      work = { ...work };
+      const activeKey = Object.keys(data.pipeline).find((k: string) => data.pipeline[k].status === "active");
+      if (activeKey) {
+        currentStep = activeKey;
+        const stepName = data.pipeline[activeKey]?.name ?? activeKey;
+        streamBlocks = [...streamBlocks, { type: "step_divider", text: stepName }];
+      }
+      return;
+    }
+
+    switch (event) {
+      case "session_ready":
+        sessionReady = true;
+        break;
+      case "session_state":
+        sessionReady = true;
+        break;
+      case "message_history":
+        if (data.blocks && Array.isArray(data.blocks)) {
+          streamBlocks = data.blocks.map((b: any) => ({
+            type: b.type ?? "text",
+            text: b.text ?? "",
+            toolName: b.toolName,
+            collapsed: b.collapsed ?? (b.type === "thinking" || b.type === "tool_result"),
+          }));
+          scrollToBottom();
+        }
+        break;
+      case "assistant_thinking":
+        streaming = true;
+        resetInactivityTimer();
+        appendToLastBlock("thinking", data.text ?? "");
+        break;
+      case "tool_use":
+        streaming = true;
+        activeToolName = data.name ?? "";
+        resetInactivityTimer();
+        if (data.name === "AskUserQuestion" && data.input?.questions) {
+          streamBlocks = [...streamBlocks, { type: "ask_question", text: "", questions: data.input.questions }];
+          scrollToBottom();
+        } else {
+          appendToLastBlock("tool_use", JSON.stringify(data.input, null, 2) ?? "", data.name);
+        }
+        break;
+      case "tool_result":
+        streaming = true;
+        activeToolName = "";
+        resetInactivityTimer();
+        appendToLastBlock("tool_result", data.content ?? "");
+        break;
+      case "assistant_text":
+        streaming = true;
+        activeToolName = "";
+        resetInactivityTimer();
+        appendToLastBlock("text", data.text ?? "");
+        break;
+      case "turn_complete":
+        if (inactivityTimer) clearTimeout(inactivityTimer);
+        streaming = false;
+        activeToolName = "";
+        showNextStep = true;
+        aborted = false;
+        if (data.result) {
+          const lastText = streamBlocks.filter(b => b.type === "text").pop();
+          const resultTrimmed = data.result.trim();
+          if (!lastText || !resultTrimmed.startsWith(lastText.text.trim().slice(0, 50))) {
+            appendToLastBlock("text", data.result);
+          }
+        }
+        assetRefresh++;
+        showOutputTab = true;
+        scrollToBottom();
+        break;
+      case "cli_exited":
+        if (inactivityTimer) clearTimeout(inactivityTimer);
+        streaming = false;
+        showNextStep = true;
+        assetRefresh++;
+        break;
+    }
+  }
+
   onMount(async () => {
     const unsub = subscribe(() => { lang = getLanguage(); });
 
@@ -187,115 +297,12 @@
 
     } catch { /* fetch failed */ }
 
-    wsConn = createWorkWs(workId, (event, data) => {
-      if (event === "pipeline_updated" && data.pipeline && work) {
-        work.pipeline = data.pipeline;
-        work = { ...work };
-        // Update currentStep to the new active step
-        const activeKey = Object.keys(data.pipeline).find((k: string) => data.pipeline[k].status === "active");
-        if (activeKey) {
-          currentStep = activeKey;
-          // Insert a step divider when a new step becomes active
-          const stepName = data.pipeline[activeKey]?.name ?? activeKey;
-          streamBlocks = [...streamBlocks, { type: "step_divider", text: stepName }];
-        }
-        return;
-      }
+    wsConn = createWorkWs(workId, wsHandler);
 
-      switch (event) {
-        case "session_ready":
-          sessionReady = true;
-          break;
-
-        case "session_state":
-          // WebSocket connected — always allow sending (sendMessage will spawn CLI if needed)
-          sessionReady = true;
-          break;
-
-        case "message_history":
-          // Server replayed full chat history — replace streamBlocks
-          if (data.blocks && Array.isArray(data.blocks)) {
-            streamBlocks = data.blocks.map((b: any) => ({
-              type: b.type ?? "text",
-              text: b.text ?? "",
-              toolName: b.toolName,
-              collapsed: b.collapsed ?? (b.type === "thinking" || b.type === "tool_result"),
-            }));
-            scrollToBottom();
-          }
-          break;
-
-        case "assistant_thinking":
-          streaming = true;
-          resetInactivityTimer();
-          appendToLastBlock("thinking", data.text ?? "");
-          break;
-
-        case "tool_use":
-          streaming = true;
-          activeToolName = data.name ?? "";
-          resetInactivityTimer();
-          if (data.name === "AskUserQuestion" && data.input?.questions) {
-            streamBlocks = [...streamBlocks, {
-              type: "ask_question",
-              text: "",
-              questions: data.input.questions,
-            }];
-            scrollToBottom();
-          } else {
-            appendToLastBlock("tool_use", JSON.stringify(data.input, null, 2) ?? "", data.name);
-          }
-          break;
-
-        case "tool_result":
-          streaming = true;
-          activeToolName = "";
-          resetInactivityTimer();
-          appendToLastBlock("tool_result", data.content ?? "");
-          break;
-
-        case "assistant_text":
-          streaming = true;
-          activeToolName = "";
-          resetInactivityTimer();
-          appendToLastBlock("text", data.text ?? "");
-          break;
-
-        case "turn_complete":
-          if (inactivityTimer) clearTimeout(inactivityTimer);
-          streaming = false;
-          activeToolName = "";
-          showNextStep = true;
-          // If the result contains text that wasn't already streamed via assistant_text,
-          // check if the last block captured it. If not, append it.
-          if (data.result) {
-            const lastText = streamBlocks.filter(b => b.type === "text").pop();
-            const resultTrimmed = data.result.trim();
-            // Only append if result text wasn't already shown (avoid duplicating streamed content)
-            if (!lastText || !resultTrimmed.startsWith(lastText.text.trim().slice(0, 50))) {
-              appendToLastBlock("text", data.result);
-            }
-          }
-          assetRefresh++;
-          scrollToBottom();
-          break;
-
-        case "cli_exited":
-          if (inactivityTimer) clearTimeout(inactivityTimer);
-          streaming = false;
-          showNextStep = true;
-          assetRefresh++;
-          break;
-      }
-    });
-
-    // Only auto-resume if step is already active (was running before page reload)
-    const shouldAutoResume = work?.pipeline && currentStep &&
-      work.pipeline[currentStep]?.status === "active";
-    if (shouldAutoResume) {
-      try {
-        await startWorkSession(workId);
-      } catch { /* failed */ }
+    // Auto-trigger if a step is already "active" (e.g. video-search created as active)
+    if (work?.pipeline && currentStep && work.pipeline[currentStep]?.status === "active") {
+      // Small delay to let WS connect first
+      setTimeout(() => triggerStep(currentStep), 500);
     }
 
     return () => {
@@ -308,31 +315,46 @@
 
 <div class="studio-layout">
   <div class="studio-header">
-    <button class="back-btn" onclick={onBack}>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-      {tt("backToHome")}
-    </button>
-    <div class="header-center">
-      <h2 class="studio-title">{work?.title ?? tt("studio")}</h2>
+    <div class="header-left-group">
+      <button class="back-btn" onclick={onBack}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        {tt("backToHome")}
+      </button>
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <h2
+        class="studio-title"
+        contenteditable="true"
+        onblur={(e) => {
+          const newTitle = (e.target as HTMLElement).textContent?.trim();
+          if (newTitle && work && newTitle !== work.title) {
+            work.title = newTitle;
+            fetch(`/api/works/${encodeURIComponent(workId)}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ title: newTitle }),
+            }).catch(() => {});
+          }
+        }}
+        onkeydown={(e) => { if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLElement).blur(); } }}
+      >{work?.title ?? tt("studio")}</h2>
       {#if work}
-        <span class="status-badge {statusBadgeClass(work.status)}">{tt(statusLabels[work.status] ?? "workDraft")}</span>
+        <span class="header-tag">{work.type === "short-video" ? tt("shortVideo") : tt("imageText")}</span>
+        {#if work.contentCategory}
+          <span class="header-tag">{work.contentCategory === "comedy" ? tt("categoryComedy") : work.contentCategory === "beauty" ? tt("categoryBeauty") : tt("categoryInfo")}</span>
+        {/if}
       {/if}
     </div>
     <div class="header-controls">
-      <div class="view-toggle">
-        <button class="toggle-btn" class:active={studioMode === "chat"} onclick={() => studioMode = "chat"} title="对话模式">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      {#if aborted}
+        <button class="resume-btn" onclick={handleResume}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          {tt("resumeTask")}
         </button>
-        <button class="toggle-btn" class:active={studioMode === "canvas"} onclick={() => studioMode = "canvas"} title="画布模式">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      {:else}
+        <button class="abort-btn" onclick={handleAbort}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>
+          {tt("abortTask")}
         </button>
-      </div>
-      {#if allStepsDone}
-        <span class="session-indicator ready">{lang === "zh" ? "已完成" : "Completed"}</span>
-      {:else if sessionReady}
-        <span class="session-indicator ready">{tt("sessionReady")}</span>
-      {:else if hasPendingWork}
-        <span class="session-indicator connecting">{tt("sessionConnecting")}</span>
       {/if}
     </div>
   </div>
@@ -447,31 +469,27 @@
       </div>
 
       <div class="input-bar">
-        <textarea
-          class="msg-input"
-          bind:this={inputEl}
-          bind:value={inputText}
-          onkeydown={handleKeydown}
-          placeholder={tt("chatPlaceholder")}
-          disabled={!sessionReady || streaming}
-          rows="2"
-        ></textarea>
-        <button class="send-btn" onclick={handleSend} disabled={!sessionReady || streaming || !inputText.trim()}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-        </button>
+        <div class="input-wrapper">
+          <textarea
+            class="msg-input"
+            bind:this={inputEl}
+            bind:value={inputText}
+            onkeydown={handleKeydown}
+            placeholder={tt("chatPlaceholder")}
+            disabled={!sessionReady || streaming}
+            rows="1"
+          ></textarea>
+          <button class="send-btn" onclick={handleSend} disabled={!sessionReady || streaming || !inputText.trim()}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
       </div>
     </div>
 
-    <!-- Right: Assets (320px in chat mode) or Canvas (expanded) -->
-    {#if studioMode === "canvas"}
-      <div class="panel-canvas">
-        <CanvasWorkspace {workId} visible={true} refreshTrigger={assetRefresh} onSendMessage={handleCanvasSend} />
-      </div>
-    {:else}
-      <div class="panel-right">
-        <AssetPanel {workId} visible={true} refreshTrigger={assetRefresh} />
-      </div>
-    {/if}
+    <!-- Right: Assets -->
+    <div class="panel-right">
+      <AssetPanel {workId} visible={true} refreshTrigger={assetRefresh} showOutput={showOutputTab} />
+    </div>
   </div>
 </div>
 
@@ -479,8 +497,9 @@
   .studio-layout {
     display: flex;
     flex-direction: column;
-    height: calc(100vh - 3rem);
-    min-height: 400px;
+    height: calc(100vh - 52px);
+    min-height: 0;
+    overflow: hidden;
   }
 
   /* Header */
@@ -489,57 +508,62 @@
     align-items: center;
     justify-content: space-between;
     padding: 0.5rem 0;
-    margin-bottom: 0.5rem;
     gap: 0.75rem;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 0;
+  }
+
+  .header-left-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1;
+    min-width: 0;
   }
 
   .back-btn {
     display: flex;
     align-items: center;
-    gap: 0.35rem;
+    gap: 0.25rem;
     background: none;
-    border: 1px solid var(--border);
-    color: var(--text-secondary);
-    padding: 0.4rem 0.8rem;
-    border-radius: 8px;
-    font-size: 0.8rem;
-    font-weight: 550;
-    font-family: inherit;
+    border: none;
+    color: var(--text-muted);
+    padding: 0.3rem 0;
+    font-size: var(--size-sm, 0.8rem);
+    font-weight: 500;
+    font-family: var(--font-body, inherit);
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: color 0.12s;
     flex-shrink: 0;
   }
-  .back-btn:hover { color: var(--text); border-color: var(--text-dim); background: var(--bg-hover); }
-
-  .header-center {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    flex: 1;
-    min-width: 0;
-  }
+  .back-btn:hover { color: var(--text); }
 
   .studio-title {
-    font-size: 1rem;
-    font-weight: 650;
+    font-family: var(--font-display, inherit);
+    font-size: var(--size-base, 0.88rem);
+    font-weight: 600;
     letter-spacing: -0.02em;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    outline: none;
+    border-bottom: 1px solid transparent;
+    cursor: text;
+    transition: border-color 0.12s;
+    padding-bottom: 1px;
   }
 
-  .status-badge {
-    font-size: 0.65rem;
-    font-weight: 700;
-    padding: 0.15rem 0.55rem;
-    border-radius: 9999px;
+  .header-tag {
+    font-size: var(--size-xs, 0.7rem);
+    font-weight: 500;
+    color: var(--text-dim);
+    padding: 0.1rem 0.4rem;
+    border: 1px solid var(--border);
+    border-radius: 3px;
     white-space: nowrap;
     flex-shrink: 0;
   }
-  .badge-success { background: rgba(52, 211, 153, 0.15); color: var(--success); }
-  .badge-error { background: rgba(251, 113, 133, 0.15); color: var(--error); }
-  .badge-running { background: rgba(245, 158, 11, 0.15); color: var(--state-running); }
-  .badge-default { background: var(--bg-surface); color: var(--text-muted); }
 
   .header-controls {
     display: flex;
@@ -548,32 +572,69 @@
     flex-shrink: 0;
   }
 
-  .session-indicator {
-    font-size: 0.72rem;
+  .abort-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.35rem 0.75rem;
+    border: none;
+    border-radius: 4px;
+    background: var(--spark-red, #FE2C55);
+    color: #fff;
+    font-family: var(--font-body, inherit);
+    font-size: var(--size-xs, 0.7rem);
     font-weight: 600;
-    padding: 0.25rem 0.6rem;
-    border-radius: 9999px;
+    cursor: pointer;
+    transition: opacity 0.12s;
+    white-space: nowrap;
   }
-  .session-indicator.ready { background: rgba(52, 211, 153, 0.12); color: var(--success); }
-  .session-indicator.connecting { background: rgba(245, 158, 11, 0.12); color: var(--state-running); }
+
+  .abort-btn:hover {
+    opacity: 0.85;
+  }
+
+  .resume-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.35rem 0.75rem;
+    border: none;
+    border-radius: 4px;
+    background: var(--text);
+    color: var(--bg);
+    font-family: var(--font-body, inherit);
+    font-size: var(--size-xs, 0.7rem);
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.12s;
+    white-space: nowrap;
+  }
+
+  .resume-btn:hover {
+    opacity: 0.85;
+  }
+
+  .studio-title:hover {
+    border-color: var(--text-dim);
+  }
+
+  .studio-title:focus {
+    border-color: var(--spark-red, #FE2C55);
+  }
 
   /* Body: 3 panels */
   .studio-body {
     display: flex;
     flex: 1;
     min-height: 0;
-    border: 1px solid var(--border);
-    border-radius: var(--card-radius);
     overflow: hidden;
-    background: var(--card-bg);
-    backdrop-filter: var(--card-blur);
-    -webkit-backdrop-filter: var(--card-blur);
   }
 
   .panel-left {
     width: 240px;
     flex-shrink: 0;
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
     border-right: 1px solid var(--border);
   }
 
@@ -589,40 +650,6 @@
     flex-shrink: 0;
     overflow: hidden;
   }
-
-  .panel-canvas {
-    flex: 1.5;
-    min-width: 0;
-    overflow: hidden;
-    border-left: 1px solid var(--border);
-  }
-
-  /* View toggle */
-  .view-toggle {
-    display: flex;
-    gap: 0.15rem;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 8px;
-    padding: 0.15rem;
-  }
-
-  .toggle-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 30px;
-    height: 28px;
-    border-radius: 6px;
-    border: none;
-    background: none;
-    color: var(--text-dim);
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .toggle-btn:hover { color: var(--text-secondary); background: rgba(255, 255, 255, 0.04); }
-  .toggle-btn.active { background: var(--accent-gradient); color: var(--accent-text); }
 
   /* Stream area */
   .stream-area {
@@ -669,7 +696,7 @@
   .user-block { align-self: flex-end; max-width: 70%; }
   .user-block .block-label { color: var(--accent); justify-content: flex-end; }
   .user-content {
-    background: rgba(134, 120, 191, 0.12);
+    background: rgba(0, 0, 0, 0.12);
     padding: 0.55rem 0.85rem;
     border-radius: 14px 14px 4px 14px;
     font-size: 0.84rem;
@@ -792,46 +819,53 @@
 
   /* Input bar */
   .input-bar {
-    display: flex;
-    align-items: flex-end;
-    gap: 0.5rem;
     padding: 0.6rem 1rem;
     border-top: 1px solid var(--border);
   }
 
-  .msg-input {
-    flex: 1;
+  .input-wrapper {
+    display: flex;
+    align-items: flex-end;
+    gap: 0;
     background: var(--bg-inset);
-    color: var(--text);
     border: 1px solid var(--border);
     border-radius: 12px;
-    padding: 0.55rem 0.85rem;
+    transition: border-color 0.15s ease;
+  }
+  .input-wrapper:focus-within {
+    border-color: var(--text-muted);
+  }
+
+  .msg-input {
+    flex: 1;
+    background: none;
+    color: var(--text);
+    border: none;
+    padding: 0.6rem 0.85rem;
     font-size: 0.82rem;
     font-family: inherit;
     resize: none;
     line-height: 1.5;
-    transition: border-color 0.15s ease;
   }
-  .msg-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .msg-input:focus { outline: none; }
   .msg-input:disabled { opacity: 0.5; cursor: not-allowed; }
+  .msg-input::placeholder { color: var(--text-dim); }
 
   .send-btn {
-    background: var(--accent-gradient);
-    color: var(--accent-text);
+    background: none;
+    color: var(--text-muted);
     border: none;
-    border-radius: 12px;
-    padding: 0.55rem;
-    width: 40px;
-    height: 40px;
+    border-radius: 0 12px 12px 0;
+    padding: 0.5rem 0.65rem;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: color 0.12s;
     flex-shrink: 0;
   }
-  .send-btn:hover:not(:disabled) { filter: brightness(1.15); transform: scale(1.05); }
-  .send-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .send-btn:hover:not(:disabled) { color: var(--text); }
+  .send-btn:disabled { opacity: 0.25; cursor: not-allowed; }
 
   /* AskUserQuestion options */
   .ask-block { max-width: 90%; }

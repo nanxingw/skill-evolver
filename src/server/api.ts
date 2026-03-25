@@ -171,6 +171,9 @@ apiRoutes.post("/api/works", async (c) => {
     const body = await c.req.json<{
       title: string;
       type: string;
+      contentCategory?: string;
+      videoSource?: string;
+      videoSearchQuery?: string;
       platforms: string[];
       topicHint?: string;
     }>();
@@ -180,6 +183,9 @@ apiRoutes.post("/api/works", async (c) => {
     const work = await storeCreateWork({
       title: body.title,
       type: body.type as "short-video" | "image-text",
+      contentCategory: body.contentCategory as any,
+      videoSource: body.videoSource as any,
+      videoSearchQuery: body.videoSearchQuery,
       platforms: body.platforms,
       topicHint: body.topicHint,
     });
@@ -750,14 +756,126 @@ apiRoutes.post("/api/works/:id/step/:step", async (c) => {
       }
     }
 
-    const prompt = [
+    const promptParts = [
       `You are working on a content piece: "${work.title}" (type: ${work.type}).`,
+      work.contentCategory ? `Content category: ${work.contentCategory}.` : "",
       `Platforms: ${work.platforms.map((p: any) => typeof p === "string" ? p : p.platform).join(", ")}.`,
       work.topicHint ? `Topic hint: ${work.topicHint}` : "",
       ``,
-      `Execute the "${pipelineStep.name}" step of the pipeline.`,
-      `Produce output appropriate for this step. Be thorough and creative.`,
-    ].filter(Boolean).join("\n");
+    ];
+
+    if (step === "material-search" && work.videoSearchQuery) {
+      promptParts.push(
+        `Execute the "视频搜索" step.`,
+        `The user wants to find existing videos from the web. Search query: "${work.videoSearchQuery}"`,
+        ``,
+        `## CRITICAL: Five-Dimension Constraint Analysis`,
+        `Before searching, you MUST parse the search query into 5 dimensions and treat them as hard constraints:`,
+        `1. **Absolute Subject & Physical Motion** — Who/what must appear, doing what? Subject must be visible EVERY SECOND.`,
+        `2. **Environment & Emotional Lighting** — What scene/setting? What light mood?`,
+        `3. **Optics & Camera** — What shot type, angle, movement?`,
+        `4. **Timeline & State Evolution** — Duration required? Speed (normal/slow/fast)? How does the subject change over time?`,
+        `5. **Aesthetic Medium & Rendering** — Live action / animation / 3D? Color tone? Resolution?`,
+        ``,
+        `Parse the query "${work.videoSearchQuery}" into these 5 dimensions first. State which are hard constraints (explicitly mentioned) vs soft constraints (inferred). Then search accordingly.`,
+        `ALL returned videos must satisfy ALL hard constraints. If a video violates any (e.g. subject disappears mid-way), discard it.`,
+        ``,
+        `## Instructions`,
+        `1. Search the web for 3 matching videos using WebSearch.`,
+        `2. For each video found, download it WITH AUDIO using yt-dlp and save to the work assets directory.`,
+        `   - First check if yt-dlp is available: \`which yt-dlp || pip3 install yt-dlp\``,
+        `   - Download command (MUST use this to get audio+video merged):`,
+        `     \`yt-dlp -f "bestvideo[height<=720]+bestaudio/best[height<=720]" --merge-output-format mp4 -o "/path/to/option-01.mp4" "VIDEO_URL"\``,
+        `   - Save videos to the work assets directory. Find the path with:`,
+        `     \`curl -s http://localhost:3271/api/works/${work.id} | python3 -c "import sys,json; w=json.load(sys.stdin); print(w.get('path',''))" || echo "$HOME/.autoviral/works/${work.id}/assets/clips"\``,
+        `   - Save as: option-01.mp4, option-02.mp4, option-03.mp4`,
+        `   - NEVER use plain curl to download videos — it will only get the video stream without audio.`,
+        `3. Present the 3 options to the user using markdown video links so they display as inline players:`,
+        `   - Use this format: \`[Video Title](/api/works/${work.id}/assets/clips/option-01.mp4)\``,
+        `   - The .mp4 link format will render as an inline video player in the chat.`,
+        `4. Ask the user to choose one of the 3 videos.`,
+        `5. After the user selects, rename/copy the chosen video as the primary clip and mark this step as done:`,
+        `   \`curl -X POST http://localhost:3271/api/works/${work.id}/pipeline/advance -H "Content-Type: application/json" -d '{"completedStep":"material-search","nextStep":"research"}'\``,
+        ``,
+        `IMPORTANT:`,
+        `- Video files MUST have audio. Always use yt-dlp with audio merging, never plain curl/wget.`,
+        `- Files must be actually downloaded and saved as assets so the inline player can play them.`,
+      );
+    } else {
+      promptParts.push(
+        `Execute the "${pipelineStep.name}" step of the pipeline.`,
+        `Produce output appropriate for this step. Be thorough and creative.`,
+      );
+      if (step === "assembly" && work.type === "short-video") {
+        promptParts.push(
+          ``,
+          `## CRITICAL: Horizontal-to-Vertical Video Conversion`,
+          `The final output MUST be 9:16 vertical (1080x1920). If any source clip is horizontal (wider than tall):`,
+          ``,
+          `**Strategy A (preferred): Full-screen crop — NO black bars**`,
+          `\`ffmpeg -i input.mp4 -vf "crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920" ...\``,
+          `Use this when the subject stays in the center and won't be cut off.`,
+          ``,
+          `**Strategy B: Width-match with vertical centering — subject too wide to crop**`,
+          `\`ffmpeg -i input.mp4 -vf "scale=1080:-2,pad=1080:1920:0:(oh-ih)/2:black" ...\``,
+          `This scales width to 1080, then pads top and bottom EQUALLY to center vertically.`,
+          `The formula \`(oh-ih)/2\` is critical — it puts equal black bars on top and bottom.`,
+          ``,
+          `**VERIFY**: After producing the final video, extract a frame and confirm:`,
+          `- No content is off-center vertically`,
+          `- If black bars exist, they must be EQUAL top and bottom`,
+          `- Subject is not cropped unless Strategy A was deliberately chosen`,
+          `\`ffmpeg -i final.mp4 -ss 3 -frames:v 1 -y /tmp/verify.png\``,
+        );
+      }
+      if (work.contentCategory === "comedy") {
+        promptParts.push(
+          ``,
+          `## IMPORTANT: This is comedy/abstract content (搞笑/抽象类).`,
+          `You MUST read skills/viral-comedy/SKILL.md and apply its rules to this step.`,
+        );
+        const comedyByStep: Record<string, string> = {
+          research: [
+            `For the research step, focus on:`,
+            `- Finding trending comedy/abstract topics, memes, and formats on the target platform`,
+            `- Analyzing what reversal types (经典反转/递进荒诞/错位/重复打破/平行对比/紧张崩塌/微观共鸣) are currently performing well`,
+            `- For abstract content: which "mismatch dimensions" (感官错配/过度认真/过度随意/语境位移/形式解构/真实解构/平行宇宙) are trending`,
+            `- Identifying comedy hooks and BGM trends`,
+          ].join("\n"),
+          plan: [
+            `For the planning step, the script/storyboard MUST follow viral-comedy structure:`,
+            `- Choose a specific structure from the 7 comedy types or 7 abstract types in the skill`,
+            `- Design the Hook (first 3 seconds) using the Hook types table`,
+            `- Write dialogue following the comedy dialogue rules (短句为王, 口语化, 留白)`,
+            `- Plan BGM strategy (情绪铺垫反转 / 卡点强化 / 反差配乐 / 梗音乐)`,
+            `- Plan sound effects at key moments (反转点必须有声音标记)`,
+            `- For abstract content: define the two "mismatch dimensions" and ensure purity of each extreme`,
+            `- Run the 爆款自检清单 before finalizing`,
+          ].join("\n"),
+          assembly: [
+            `For the assembly step, you handle BOTH asset generation AND editing/compositing.`,
+            ``,
+            `### Asset Generation (visual production):`,
+            `- Shot types must serve the comedy (特写 for reaction moments, 大远景 for absurd reveals)`,
+            `- Color grading must match the comedy sub-type (日常搞笑=natural, 模仿正式=cinematic, 抽象=oversaturated or intentionally low quality)`,
+            `- For abstract: visual purity is critical — each extreme must be "authentic"`,
+            ``,
+            `### Editing & Compositing:`,
+            `- Editing rhythm: normal during setup, sudden change at reversal point`,
+            `- BGM must have a sound marker at the reversal point (静音/音效/换曲)`,
+            `- Jump cuts for comedy, longer takes for abstract`,
+            `- Add sound effects precisely (急刹车 at reversals, 静音0.3-0.5s before twists)`,
+            `- For abstract: consider using silence instead of sound effects to maintain the "dead serious" tone`,
+            `- Volume: dialogue 100%, BGM 15-25% during speech, 40-60% during visual-only`,
+          ].join("\n"),
+        };
+        if (comedyByStep[step]) {
+          promptParts.push(comedyByStep[step]);
+        }
+      }
+    }
+
+    const prompt = promptParts.filter(Boolean).join("\n");
 
     const config = await loadConfig();
     let session = wsBridge.getSession(id);

@@ -61,6 +61,7 @@
   let sortAsc = $state(false);
   let showUrlEdit = $state(false);
   let editUrlValue = $state("");
+  let analyticsPlatform: "douyin" | "xiaohongshu" = $state("douyin");
 
   // ── Derived ────────────────────────────────────────────────────────────────
   let sortedWorks = $derived(
@@ -186,39 +187,48 @@
 {:else if !configured || !creatorData}
   <!-- ── Empty / Not-configured state ───────────────────────────────────── -->
   <div class="empty-state">
-    <div class="empty-illo">
-      <svg width="80" height="80" viewBox="0 0 80 80" fill="none">
-        <circle cx="40" cy="40" r="38" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.3"/>
-        <circle cx="40" cy="40" r="26" fill="var(--accent-soft)"/>
-        <path d="M28 46 C28 36 52 36 52 46" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
-        <circle cx="33" cy="35" r="3" fill="var(--accent)" opacity="0.5"/>
-        <circle cx="47" cy="35" r="3" fill="var(--accent)" opacity="0.5"/>
-        <path d="M40 20 L40 14 M40 60 L40 66 M20 40 L14 40 M60 40 L66 40" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" opacity="0.25"/>
-      </svg>
+    <span class="empty-emoji">☹️</span>
+
+    <!-- Platform tabs -->
+    <div class="platform-switch">
+      <button class="ps-tab" class:active={analyticsPlatform === "douyin"} onclick={() => analyticsPlatform = "douyin"}>抖音</button>
+      <button class="ps-tab" class:active={analyticsPlatform === "xiaohongshu"} onclick={() => analyticsPlatform = "xiaohongshu"}>小红书</button>
     </div>
-    <h2 class="empty-title">连接你的抖音账号</h2>
-    <p class="empty-sub">输入账号主页链接，开始采集创作者数据，解锁完整数据看板</p>
+
+    <h2 class="empty-title">
+      {analyticsPlatform === "douyin" ? "连接你的抖音账号" : "连接你的小红书账号"}
+    </h2>
+    <p class="empty-sub">
+      输入账号主页链接，开始采集创作者数据，解锁完整数据看板
+    </p>
 
     <div class="how-to-get">
       <span class="how-label">如何获取链接？</span>
-      <div class="how-steps">
-        <span class="step">打开手机抖音</span>
-        <span class="step-arrow">→</span>
-        <span class="step">点击右上角 ≡</span>
-        <span class="step-arrow">→</span>
-        <span class="step">我的二维码</span>
-        <span class="step-arrow">→</span>
-        <span class="step">右上角分享</span>
-        <span class="step-arrow">→</span>
-        <span class="step highlight">复制链接</span>
-      </div>
+      {#if analyticsPlatform === "douyin"}
+        <ol class="how-steps-list">
+          <li>打开手机抖音</li>
+          <li>点击右上角 <strong>≡</strong></li>
+          <li>选择 <strong>我的二维码</strong></li>
+          <li>右上角 <strong>分享</strong></li>
+          <li><strong>复制链接</strong></li>
+        </ol>
+      {:else}
+        <ol class="how-steps-list">
+          <li>打开小红书 App</li>
+          <li>进入 <strong>「我」</strong> 页面</li>
+          <li>点击右上角 <strong>···</strong></li>
+          <li><strong>复制链接</strong></li>
+        </ol>
+      {/if}
     </div>
 
     <div class="url-form">
       <input
         class="url-input"
         type="text"
-        placeholder="粘贴你的抖音主页链接，如 https://v.douyin.com/xxx/"
+        placeholder={analyticsPlatform === "douyin"
+          ? "粘贴你的抖音主页链接，如 https://v.douyin.com/xxx/"
+          : "粘贴你的小红书主页链接，如 https://www.xiaohongshu.com/user/xxx"}
         bind:value={douyinUrlInput}
         onkeydown={(e) => { if (e.key === "Enter") saveDouyinUrl(); }}
       />
@@ -479,7 +489,7 @@
   .spinner {
     width: 28px;
     height: 28px;
-    border: 2.5px solid rgba(134, 120, 191, 0.15);
+    border: 2.5px solid rgba(0, 0, 0, 0.15);
     border-top-color: var(--accent);
     border-radius: 50%;
     animation: spin 0.75s linear infinite;
@@ -499,18 +509,44 @@
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
     text-align: center;
     gap: 1rem;
-    padding: 3.5rem 1.5rem;
-    background: var(--card-bg);
-    border: 1px solid var(--card-border);
-    border-radius: var(--card-radius, 20px);
-    backdrop-filter: var(--card-blur);
-    -webkit-backdrop-filter: var(--card-blur);
+    padding: 3rem 1.5rem;
+    min-height: calc(100vh - 52px - 2rem);
   }
 
-  .empty-illo {
-    opacity: 0.85;
+  .empty-emoji {
+    font-size: 3.5rem;
+    line-height: 1;
+  }
+
+  .platform-switch {
+    display: flex;
+    gap: 0.25rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .ps-tab {
+    padding: 0.35rem 0.85rem;
+    border: 1.5px solid var(--border);
+    border-radius: 6px;
+    background: none;
+    color: var(--text-muted);
+    font-family: var(--font-body, inherit);
+    font-size: 0.8rem;
+    font-weight: 550;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .ps-tab:hover { border-color: var(--text-dim); color: var(--text); }
+
+  .ps-tab.active {
+    border-color: var(--spark-red, #FE2C55);
+    background: rgba(254, 44, 85, 0.06);
+    color: var(--text);
+    font-weight: 600;
   }
 
   .empty-title {
@@ -525,51 +561,68 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.4rem;
+    gap: 0.5rem;
     margin-top: 0.25rem;
-    padding: 0.65rem 1.25rem;
-    background: rgba(134, 120, 191, 0.06);
-    border: 1px solid rgba(134, 120, 191, 0.12);
-    border-radius: 10px;
-    max-width: 520px;
+    padding: 1rem 1.5rem;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    max-width: 400px;
+    width: 100%;
   }
 
   .how-label {
-    font-size: 0.72rem;
+    font-size: var(--size-xs, 0.7rem);
     font-weight: 650;
-    color: var(--accent);
-    letter-spacing: 0.02em;
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
   }
 
-  .how-steps {
+  .how-steps-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    width: 100%;
+    counter-reset: step;
+  }
+
+  .how-steps-list li {
+    counter-increment: step;
     display: flex;
     align-items: center;
-    gap: 0.35rem;
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-
-  .step {
-    font-size: 0.78rem;
-    font-weight: 550;
+    gap: 0.5rem;
+    font-size: 0.8rem;
     color: var(--text-secondary);
-    padding: 0.2rem 0.5rem;
-    background: rgba(255, 255, 255, 0.04);
-    border-radius: 5px;
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    line-height: 1.4;
   }
 
-  .step.highlight {
-    background: rgba(134, 120, 191, 0.12);
-    border-color: rgba(134, 120, 191, 0.2);
-    color: var(--accent);
-    font-weight: 650;
-  }
-
-  .step-arrow {
-    font-size: 0.7rem;
+  .how-steps-list li::before {
+    content: counter(step);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.3rem;
+    height: 1.3rem;
+    min-width: 1.3rem;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    font-size: 0.65rem;
+    font-weight: 700;
     color: var(--text-dim);
-    opacity: 0.5;
+  }
+
+  .how-steps-list li:last-child::before {
+    border-color: var(--spark-red, #FE2C55);
+    color: var(--spark-red, #FE2C55);
+  }
+
+  .how-steps-list li strong {
+    font-weight: 600;
+    color: var(--text);
   }
 
   .url-edit-hint {
@@ -581,10 +634,10 @@
   }
 
   .empty-sub {
-    font-size: 0.88rem;
+    font-size: 0.85rem;
     color: var(--text-muted);
-    max-width: 360px;
-    line-height: 1.65;
+    max-width: 340px;
+    line-height: 1.6;
     margin: 0;
   }
 
@@ -592,24 +645,24 @@
     display: flex;
     gap: 0.5rem;
     width: 100%;
-    max-width: 480px;
+    max-width: 400px;
   }
 
   .url-input {
     flex: 1;
-    padding: 0.7rem 1rem;
+    padding: 0.55rem 0.85rem;
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: 4px;
     background: var(--bg-inset);
     color: var(--text);
-    font-size: 0.85rem;
-    font-family: inherit;
+    font-size: 0.82rem;
+    font-family: var(--font-body, inherit);
     outline: none;
-    transition: border-color 0.2s ease;
+    transition: border-color 0.15s ease;
   }
 
   .url-input:focus {
-    border-color: var(--accent);
+    border-color: var(--text-muted);
   }
 
   .url-input::placeholder {
@@ -620,21 +673,21 @@
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    padding: 0.7rem 1.3rem;
-    background: var(--accent);
-    color: #fff;
+    padding: 0.55rem 1rem;
+    background: var(--text);
+    color: var(--bg);
     border: none;
-    border-radius: 12px;
-    font-size: 0.88rem;
-    font-weight: 650;
-    font-family: inherit;
+    border-radius: 4px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    font-family: var(--font-body, inherit);
     cursor: pointer;
-    transition: background 0.2s ease, opacity 0.2s ease;
+    transition: opacity 0.12s ease;
     white-space: nowrap;
   }
 
   .start-btn:hover:not(:disabled) {
-    background: var(--accent-hover);
+    opacity: 0.8;
   }
 
   .start-btn:disabled {
@@ -688,8 +741,8 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.6rem 1rem;
-    background: rgba(134, 120, 191, 0.06);
-    border: 1px solid rgba(134, 120, 191, 0.15);
+    background: rgba(0, 0, 0, 0.06);
+    border: 1px solid rgba(0, 0, 0, 0.15);
     border-radius: 10px;
     margin-bottom: 0.5rem;
     animation: fadeIn 0.2s ease;
@@ -914,7 +967,7 @@
   }
 
   .metric-card:hover {
-    border-color: rgba(134, 120, 191, 0.22);
+    border-color: rgba(0, 0, 0, 0.22);
     transform: translateY(-2px);
   }
 
@@ -938,7 +991,7 @@
   }
 
   .play-icon {
-    background: rgba(134, 120, 191, 0.12);
+    background: rgba(0, 0, 0, 0.12);
     color: var(--accent);
   }
 
@@ -1207,7 +1260,7 @@
   .bar-fill {
     height: 100%;
     border-radius: 99px;
-    background: rgba(134, 120, 191, 0.35);
+    background: rgba(0, 0, 0, 0.35);
     transition: width 0.4s ease;
   }
 

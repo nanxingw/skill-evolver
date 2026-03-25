@@ -153,7 +153,7 @@
   }
 
   .msg-user .msg-bubble {
-    background: rgba(134, 120, 191, 0.15);
+    background: rgba(0, 0, 0, 0.15);
     color: var(--text);
     border-bottom-right-radius: 4px;
   }

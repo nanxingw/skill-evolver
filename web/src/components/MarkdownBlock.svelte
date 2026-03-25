@@ -42,12 +42,29 @@
     return `<pre class="md-code-block"><code class="hljs ${language ? `language-${language}` : ""}">${highlighted}</code></pre>`;
   };
 
+  // Custom renderer: turn video asset links into inline <video> players
+  renderer.link = ({ href, title, text: linkText }: { href: string; title?: string | null; text: string }) => {
+    if (href && /\.(mp4|webm|mov)(\?|$)/i.test(href)) {
+      return `<div class="md-video-wrapper"><video controls preload="metadata" src="${href}" title="${title ?? linkText}"></video><span class="md-video-label">${linkText}</span></div>`;
+    }
+    return `<a href="${href}"${title ? ` title="${title}"` : ""}>${linkText}</a>`;
+  };
+
+  // Also detect bare image/video URLs in images
+  renderer.image = ({ href, title, text: altText }: { href: string; title?: string | null; text: string }) => {
+    if (href && /\.(mp4|webm|mov)(\?|$)/i.test(href)) {
+      return `<div class="md-video-wrapper"><video controls preload="metadata" src="${href}" title="${title ?? altText}"></video><span class="md-video-label">${altText}</span></div>`;
+    }
+    return `<img src="${href}" alt="${altText}"${title ? ` title="${title}"` : ""} />`;
+  };
+
   let html = $derived(() => {
     try {
       const raw = marked.parse(text) as string;
       return DOMPurify.sanitize(raw, {
-        ADD_TAGS: ["pre", "code"],
-        ADD_ATTR: ["class"],
+        ADD_TAGS: ["pre", "code", "video", "source", "img", "div", "span"],
+        ADD_ATTR: ["class", "controls", "preload", "src", "type", "alt", "title", "autoplay", "muted", "loop", "playsinline"],
+        ALLOW_UNKNOWN_PROTOCOLS: true,
       });
     } catch {
       return text;
@@ -97,7 +114,7 @@
     font-size: 0.8rem;
   }
   .md-rendered :global(th) {
-    background: rgba(134, 120, 191, 0.1);
+    background: rgba(0, 0, 0, 0.1);
     font-weight: 650;
     text-align: left;
     padding: 0.45rem 0.65rem;
@@ -144,8 +161,40 @@
     padding: 0.3rem 0.75rem;
     margin: 0.4rem 0;
     color: var(--text-muted);
-    background: rgba(134, 120, 191, 0.04);
+    background: rgba(0, 0, 0, 0.04);
     border-radius: 0 6px 6px 0;
+  }
+
+  /* Inline video player */
+  .md-rendered :global(.md-video-wrapper) {
+    margin: 0.5rem 0;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: rgba(0, 0, 0, 0.3);
+  }
+
+  .md-rendered :global(.md-video-wrapper video) {
+    width: 100%;
+    max-height: 360px;
+    display: block;
+    object-fit: contain;
+    background: #000;
+  }
+
+  .md-rendered :global(.md-video-label) {
+    display: block;
+    padding: 0.4rem 0.65rem;
+    font-size: 0.76rem;
+    color: var(--text-secondary);
+    font-weight: 550;
+  }
+
+  /* Inline images */
+  .md-rendered :global(img) {
+    max-width: 100%;
+    border-radius: 10px;
+    margin: 0.4rem 0;
   }
 
   /* Horizontal rule */

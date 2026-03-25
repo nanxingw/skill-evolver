@@ -59,12 +59,14 @@ export async function fetchStatus() {
 // ---------------------------------------------------------------------------
 
 export type WorkType = "short-video" | "image-text";
+export type ContentCategory = "info" | "beauty" | "comedy";
 export type WorkStatus = "draft" | "creating" | "ready" | "failed";
 
 export interface WorkSummary {
   id: string;
   title: string;
   type: WorkType;
+  contentCategory?: ContentCategory;
   status: WorkStatus;
   platforms: string[];
   coverImage?: string;
@@ -83,6 +85,7 @@ export interface Work {
   id: string;
   title: string;
   type: WorkType;
+  contentCategory?: ContentCategory;
   status: WorkStatus;
   platforms: string[];
   pipeline: Record<string, PipelineStep>;
@@ -109,7 +112,10 @@ export async function fetchWork(id: string): Promise<Work> {
 export async function createWorkApi(input: {
   title: string;
   type: WorkType;
-  platforms: string[];
+  contentCategory?: ContentCategory;
+  videoSource?: string;
+  videoSearchQuery?: string;
+  platforms?: string[];
   topicHint?: string;
 }): Promise<Work> {
   return request<Work>("/api/works", {

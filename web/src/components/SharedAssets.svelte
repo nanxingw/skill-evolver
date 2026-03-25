@@ -253,9 +253,9 @@
   }
 
   .asset-tab.active {
-    background: rgba(134, 120, 191, 0.12);
+    background: rgba(0, 0, 0, 0.12);
     color: var(--accent);
-    border-color: rgba(134, 120, 191, 0.2);
+    border-color: rgba(0, 0, 0, 0.2);
   }
 
   .asset-tab svg {
@@ -306,7 +306,7 @@
   .loader-sm {
     width: 18px;
     height: 18px;
-    border: 2px solid rgba(134, 120, 191, 0.15);
+    border: 2px solid rgba(0, 0, 0, 0.15);
     border-top-color: var(--accent);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
@@ -353,7 +353,7 @@
   }
 
   .asset-item:hover {
-    border-color: rgba(134, 120, 191, 0.3);
+    border-color: rgba(0, 0, 0, 0.3);
     transform: translateY(-1px);
   }
 
@@ -384,14 +384,14 @@
     align-items: center;
     justify-content: center;
     border: none;
-    background: linear-gradient(135deg, rgba(134, 120, 191, 0.1), rgba(134, 120, 191, 0.03));
+    background: linear-gradient(135deg, rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.03));
     color: var(--accent);
     cursor: pointer;
     transition: all 0.2s ease;
   }
 
   .audio-play-btn:hover {
-    background: linear-gradient(135deg, rgba(134, 120, 191, 0.18), rgba(134, 120, 191, 0.06));
+    background: linear-gradient(135deg, rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.06));
   }
 
   .asset-icon {

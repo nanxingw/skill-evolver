@@ -1,10 +1,16 @@
 <script lang="ts">
+  import { t, getLanguage } from "../lib/i18n";
+
   let {
     interests = $bindable([]),
+    competitors = $bindable([]),
     onUpdate,
+    onUpdateCompetitors,
   }: {
     interests: string[];
+    competitors?: string[];
     onUpdate: (interests: string[]) => void;
+    onUpdateCompetitors?: (competitors: string[]) => void;
   } = $props();
 
   const PRESET_TOPICS = [
@@ -13,31 +19,19 @@
     "教育", "游戏", "音乐", "家居", "育儿",
   ];
 
-  let editMode = $state(false);
+  let showModal = $state(false);
   let inputValue = $state("");
-  let showSuggestions = $state(false);
   let inputEl: HTMLInputElement | undefined = $state(undefined);
 
   let suggestions = $derived(
     inputValue.trim().length > 0
       ? PRESET_TOPICS.filter(
-          (t) =>
-            t.includes(inputValue.trim()) &&
-            !interests.includes(t)
+          (t) => t.includes(inputValue.trim()) && !interests.includes(t)
         )
       : PRESET_TOPICS.filter((t) => !interests.includes(t))
   );
 
-  function toggleEdit() {
-    editMode = !editMode;
-    if (!editMode) {
-      inputValue = "";
-      showSuggestions = false;
-    } else {
-      // focus input after toggle
-      setTimeout(() => inputEl?.focus(), 50);
-    }
-  }
+  let lang = getLanguage();
 
   function removeTag(tag: string) {
     const next = interests.filter((t) => t !== tag);
@@ -52,7 +46,6 @@
     interests = next;
     onUpdate(next);
     inputValue = "";
-    showSuggestions = false;
     inputEl?.focus();
   }
 
@@ -61,290 +54,288 @@
       e.preventDefault();
       if (inputValue.trim()) addTag(inputValue);
     } else if (e.key === "Escape") {
-      showSuggestions = false;
+      showModal = false;
       inputValue = "";
-    } else if (e.key === "Backspace" && inputValue === "" && interests.length > 0) {
-      removeTag(interests[interests.length - 1]);
     }
   }
 
-  function handleInputFocus() {
-    showSuggestions = true;
+  function openModal() {
+    showModal = true;
+    setTimeout(() => inputEl?.focus(), 80);
   }
 
-  function handleInputBlur() {
-    // Delay so suggestion clicks register first
-    setTimeout(() => { showSuggestions = false; }, 150);
+  function closeModal() {
+    showModal = false;
+    inputValue = "";
+  }
+
+  function handleOverlayClick(e: MouseEvent) {
+    if ((e.target as HTMLElement).classList.contains("interest-overlay")) {
+      closeModal();
+    }
   }
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="interest-bar">
-  <div class="bar-header">
-    <!-- Compass icon + label -->
-    <span class="bar-label">
-      <svg class="label-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="10"/>
-        <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>
-      </svg>
-      我的关注领域
-    </span>
-    <button class="edit-btn" class:active={editMode} onclick={toggleEdit}>
-      {editMode ? "完成" : "编辑"}
-    </button>
-  </div>
+<span class="interest-inline">
+  <button class="count-link" onclick={openModal}>
+    <span class="count-num">{interests.length}</span>
+    {getLanguage() === "zh" ? " 关注话题" : interests.length === 1 ? " topic" : " topics"}
+  </button>
+  <span class="count-sep">·</span>
+  <button class="count-link" onclick={openModal}>
+    <span class="count-num">{competitors?.length ?? 0}</span>
+    {getLanguage() === "zh" ? " 关注竞品" : competitors?.length === 1 ? " competitor" : " competitors"}
+  </button>
+</span>
 
-  <div class="tag-row">
-    {#if interests.length === 0 && !editMode}
-      <span class="empty-hint">点击编辑添加关注领域，获取更精准的趋势推荐</span>
-    {/if}
+{#if showModal}
+  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+  <div class="interest-overlay" onclick={handleOverlayClick}>
+    <div class="interest-modal">
+      <div class="modal-head">
+        <h3>{getLanguage() === "zh" ? "关注的话题" : "Followed Topics"}</h3>
+        <button class="modal-close" onclick={closeModal}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
 
-    {#each interests as tag}
-      <span class="tag">
-        {tag}
-        {#if editMode}
-          <button class="tag-remove" onclick={() => removeTag(tag)} aria-label="删除 {tag}">
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
-        {/if}
-      </span>
-    {/each}
-
-    {#if editMode}
-      <div class="input-wrap">
-        <input
-          bind:this={inputEl}
-          bind:value={inputValue}
-          class="tag-input"
-          type="text"
-          placeholder="添加标签..."
-          onkeydown={handleInputKeydown}
-          onfocus={handleInputFocus}
-          onblur={handleInputBlur}
-        />
-
-        {#if showSuggestions && suggestions.length > 0}
-          <div class="suggestions">
-            {#each suggestions as s}
-              <!-- svelte-ignore a11y_click_events_have_key_events -->
-              <button class="suggestion-item" onmousedown={() => addTag(s)}>
-                {s}
-              </button>
+      <div class="modal-body">
+        {#if interests.length > 0}
+          <div class="topic-list">
+            {#each interests as tag}
+              <div class="topic-item">
+                <span class="topic-name">{tag}</span>
+                <button class="topic-remove" onclick={() => removeTag(tag)}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
             {/each}
           </div>
+        {:else}
+          <p class="empty-hint">{getLanguage() === "zh" ? "还没有关注的话题" : "No topics followed yet"}</p>
         {/if}
+
+        <div class="add-section">
+          <input
+            bind:this={inputEl}
+            bind:value={inputValue}
+            class="add-input"
+            type="text"
+            placeholder={getLanguage() === "zh" ? "添加话题..." : "Add topic..."}
+            onkeydown={handleInputKeydown}
+          />
+          {#if suggestions.length > 0}
+            <div class="suggestion-list">
+              {#each suggestions as s}
+                <button class="suggestion-chip" onmousedown={() => addTag(s)}>
+                  {s}
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
       </div>
-    {/if}
+    </div>
   </div>
-</div>
+{/if}
 
 <style>
-  .interest-bar {
-    display: flex;
-    flex-direction: column;
-    gap: 0.55rem;
-    padding: 0.65rem 0.9rem;
-    background: rgba(255, 255, 255, 0.025);
-    border: 1px solid var(--card-border, rgba(255, 255, 255, 0.07));
-    border-radius: 12px;
-    transition: border-color 0.2s ease;
-  }
-
-  .interest-bar:has(.tag-input:focus) {
-    border-color: rgba(134, 120, 191, 0.3);
-  }
-
-  /* Header row */
-  .bar-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-  }
-
-  .bar-label {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    font-size: 0.72rem;
-    font-weight: 650;
+  .interest-inline {
+    font-size: var(--size-xs, 0.7rem);
     color: var(--text-dim);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
     white-space: nowrap;
   }
 
-  .label-icon {
-    opacity: 0.6;
-    flex-shrink: 0;
-  }
-
-  .edit-btn {
-    padding: 0.2rem 0.6rem;
-    border-radius: 6px;
-    border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
-    background: none;
-    color: var(--text-dim);
-    font-size: 0.72rem;
-    font-weight: 600;
-    font-family: inherit;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    white-space: nowrap;
-  }
-
-  .edit-btn:hover {
-    border-color: var(--accent);
-    color: var(--accent);
-    background: rgba(134, 120, 191, 0.08);
-  }
-
-  .edit-btn.active {
-    border-color: var(--accent);
-    color: var(--accent);
-    background: rgba(134, 120, 191, 0.1);
-  }
-
-  /* Tag row */
-  .tag-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.4rem;
-    min-height: 1.75rem;
-  }
-
-  .empty-hint {
-    font-size: 0.78rem;
-    color: var(--text-muted, rgba(255, 255, 255, 0.28));
-    font-style: italic;
-    line-height: 1.4;
-  }
-
-  /* Tags */
-  .tag {
+  .count-link {
     display: inline-flex;
     align-items: center;
-    gap: 0.3rem;
-    padding: 0.25rem 0.65rem;
-    border-radius: 9999px;
-    background: rgba(134, 120, 191, 0.12);
-    border: 1px solid rgba(134, 120, 191, 0.2);
-    color: var(--accent, #8678bf);
-    font-size: 0.78rem;
-    font-weight: 580;
-    transition: background 0.15s ease, border-color 0.15s ease;
-    white-space: nowrap;
+    gap: 0.15rem;
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: inherit;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    padding: 0;
+    transition: color 0.12s;
   }
 
-  .tag:has(.tag-remove) {
-    padding-right: 0.4rem;
+  .count-link:hover {
+    color: var(--text);
   }
 
-  .tag-remove {
+  .count-num {
+    font-weight: 700;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .count-link:hover .count-num {
+    color: var(--text);
+  }
+
+  .count-sep {
+    color: var(--text-dim);
+    opacity: 0.4;
+    margin: 0 0.2rem;
+  }
+
+  /* Modal */
+  .interest-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    border: none;
-    background: rgba(134, 120, 191, 0.15);
-    color: var(--accent, #8678bf);
-    cursor: pointer;
-    padding: 0;
-    transition: background 0.15s ease;
-    flex-shrink: 0;
+    z-index: 1000;
+    padding: 1rem;
+    animation: fadeIn 0.12s ease;
   }
 
-  .tag-remove:hover {
-    background: rgba(251, 113, 133, 0.25);
-    color: #fb7185;
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
 
-  /* Inline input */
-  .input-wrap {
-    position: relative;
-    display: inline-flex;
+  .interest-modal {
+    background: var(--bg-elevated, #161616);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    width: 100%;
+    max-width: 360px;
+    max-height: 70vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+    animation: modalIn 0.15s ease;
+  }
+
+  @keyframes modalIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .modal-head {
+    display: flex;
     align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.15rem;
+    border-bottom: 1px solid var(--border);
   }
 
-  .tag-input {
+  .modal-head h3 {
+    font-family: var(--font-display, inherit);
+    font-size: var(--size-base, 0.88rem);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+
+  .modal-close {
     background: none;
     border: none;
-    outline: none;
-    color: var(--text);
-    font-size: 0.78rem;
-    font-family: inherit;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0.15rem;
+    display: flex;
+    transition: color 0.12s;
+  }
+
+  .modal-close:hover { color: var(--text); }
+
+  .modal-body {
+    padding: 1rem 1.15rem;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+  }
+
+  .topic-list {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .topic-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .topic-item:last-child { border-bottom: none; }
+
+  .topic-name {
+    font-size: var(--size-sm, 0.8rem);
     font-weight: 500;
-    width: 90px;
-    min-width: 60px;
-    padding: 0.2rem 0.2rem;
-    transition: width 0.2s ease;
+    color: var(--text);
   }
 
-  .tag-input::placeholder {
-    color: var(--text-muted, rgba(255, 255, 255, 0.25));
+  .topic-remove {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 0.15rem;
+    display: flex;
+    border-radius: 3px;
+    transition: color 0.12s;
   }
 
-  .tag-input:focus {
-    width: 120px;
+  .topic-remove:hover { color: var(--error); }
+
+  .empty-hint {
+    font-size: var(--size-sm, 0.8rem);
+    color: var(--text-dim);
+    text-align: center;
+    padding: 0.75rem 0;
   }
 
-  /* Suggestions dropdown */
-  .suggestions {
-    position: absolute;
-    top: calc(100% + 6px);
-    left: 0;
-    z-index: 100;
-    background: var(--card-bg, rgba(18, 16, 30, 0.92));
-    border: 1px solid var(--card-border, rgba(255, 255, 255, 0.08));
-    border-radius: 10px;
-    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+  .add-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .add-input {
+    width: 100%;
+    background: var(--bg-inset, #111);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.45rem 0.65rem;
+    font-size: var(--size-sm, 0.8rem);
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.12s;
+  }
+
+  .add-input:focus { border-color: var(--text-muted); }
+  .add-input::placeholder { color: var(--text-dim); }
+
+  .suggestion-list {
     display: flex;
     flex-wrap: wrap;
     gap: 0.3rem;
-    padding: 0.55rem 0.6rem;
-    min-width: 200px;
-    max-width: 280px;
-    animation: dropIn 0.15s ease;
   }
 
-  @keyframes dropIn {
-    from {
-      opacity: 0;
-      transform: translateY(-4px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  .suggestion-item {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.2rem 0.55rem;
-    border-radius: 9999px;
-    border: 1px solid rgba(134, 120, 191, 0.18);
-    background: rgba(134, 120, 191, 0.07);
-    color: var(--text-secondary, rgba(255, 255, 255, 0.65));
-    font-size: 0.75rem;
-    font-weight: 550;
+  .suggestion-chip {
+    padding: 0.2rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: none;
+    color: var(--text-secondary);
+    font-size: var(--size-xs, 0.7rem);
+    font-weight: 500;
     font-family: inherit;
     cursor: pointer;
-    transition: all 0.12s ease;
-    white-space: nowrap;
+    transition: all 0.12s;
   }
 
-  .suggestion-item:hover {
-    background: rgba(134, 120, 191, 0.2);
-    border-color: rgba(134, 120, 191, 0.4);
-    color: var(--accent, #8678bf);
+  .suggestion-chip:hover {
+    border-color: var(--text-dim);
+    color: var(--text);
   }
 </style>

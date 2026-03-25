@@ -19,10 +19,16 @@ export interface PipelineStep {
   note?: string;
 }
 
+export type ContentCategory = "info" | "beauty" | "comedy";
+export type VideoSource = "upload" | "search" | "ai-generate";
+
 export interface Work {
   id: string;
   title: string;
   type: WorkType;
+  contentCategory?: ContentCategory;
+  videoSource?: VideoSource;
+  videoSearchQuery?: string;
   status: WorkStatus;
   platforms: string[];
   pipeline: Record<string, PipelineStep>;
@@ -115,12 +121,18 @@ function toSummary(w: Work): WorkSummary {
 
 // ── Pipeline templates ───────────────────────────────────────────────────────
 
-function defaultPipeline(type: WorkType): Record<string, PipelineStep> {
+function defaultPipeline(type: WorkType, videoSource?: VideoSource): Record<string, PipelineStep> {
+  const result: Record<string, PipelineStep> = {};
+
+  // Prepend material-search step if user chose web search for video source
+  if (type === "short-video" && videoSource === "search") {
+    result["material-search"] = { name: "素材搜索", status: "active", startedAt: new Date().toISOString() };
+  }
+
   const names: Record<string, Record<string, string>> = {
-    "short-video": { research: "话题调研", plan: "分镜规划", assets: "素材生成", assembly: "视频合成" },
+    "short-video": { research: "话题调研", plan: "分镜规划", assembly: "视频合成" },
     "image-text": { research: "话题调研", plan: "内容规划", assets: "图片生成", assembly: "图文排版" },
   };
-  const result: Record<string, PipelineStep> = {};
   for (const [key, name] of Object.entries(names[type])) {
     result[key] = { name, status: "pending" };
   }
@@ -150,6 +162,9 @@ export async function getWork(id: string): Promise<Work | undefined> {
 export async function createWork(input: {
   title: string;
   type: WorkType;
+  contentCategory?: ContentCategory;
+  videoSource?: VideoSource;
+  videoSearchQuery?: string;
   platforms: string[];
   topicHint?: string;
 }): Promise<Work> {
@@ -159,9 +174,12 @@ export async function createWork(input: {
     id,
     title: input.title,
     type: input.type,
-    status: "draft",
+    contentCategory: input.contentCategory,
+    videoSource: input.videoSource,
+    videoSearchQuery: input.videoSearchQuery,
+    status: input.videoSource === "search" ? "creating" : "draft",
     platforms: input.platforms,
-    pipeline: defaultPipeline(input.type),
+    pipeline: defaultPipeline(input.type, input.videoSource as VideoSource | undefined),
     topicHint: input.topicHint,
     createdAt: now,
     updatedAt: now,
