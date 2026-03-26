@@ -1338,22 +1338,29 @@
 
   .eval-icon { font-size: 14px; font-weight: 700; }
 
-  /* Eval toggle */
+  /* Eval toggle — impeccable design: clean, readable on both light/dark themes */
   .eval-toggle {
     display: flex;
     align-items: center;
     gap: 8px;
     margin-left: 16px;
-    padding: 4px 12px;
-    border-radius: 8px;
-    background: var(--bg-secondary, #1a1a2e);
+    padding: 6px 14px;
+    border-radius: 20px;
+    background: rgba(0, 0, 0, 0.06);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    transition: all 0.2s ease;
+  }
+
+  .eval-toggle:hover {
+    background: rgba(0, 0, 0, 0.1);
   }
 
   .toggle-switch {
     position: relative;
     display: inline-block;
-    width: 36px;
-    height: 20px;
+    width: 38px;
+    height: 22px;
+    flex-shrink: 0;
   }
 
   .toggle-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
@@ -1361,26 +1368,27 @@
   .toggle-slider {
     position: absolute;
     inset: 0;
-    background: var(--bg-tertiary, #2a2a4a);
-    border-radius: 10px;
+    background: #ccc;
+    border-radius: 11px;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: background 0.25s ease;
   }
 
   .toggle-slider::before {
     content: "";
     position: absolute;
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
     left: 2px;
     bottom: 2px;
     background: white;
     border-radius: 50%;
-    transition: transform 0.2s;
+    transition: transform 0.25s ease;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
   }
 
   .toggle-switch input:checked + .toggle-slider {
-    background: var(--amber, #f59e0b);
+    background: #f59e0b;
   }
 
   .toggle-switch input:checked + .toggle-slider::before {
@@ -1388,9 +1396,11 @@
   }
 
   .toggle-label {
-    font-size: 12px;
-    color: var(--text-secondary, #8888aa);
-    font-weight: 500;
+    font-size: 13px;
+    color: #555;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    user-select: none;
   }
 
   /* Eval blocked panel */
@@ -1398,8 +1408,8 @@
     margin: 8px 16px;
     padding: 16px;
     border-radius: 12px;
-    background: color-mix(in srgb, #ef4444 8%, var(--bg-secondary, #1a1a2e));
-    border: 1px solid color-mix(in srgb, #ef4444 25%, transparent);
+    background: #fef2f2;
+    border: 1px solid #fecaca;
     animation: slideUp 0.3s ease-out;
   }
 
@@ -1414,7 +1424,7 @@
     gap: 8px;
     font-size: 14px;
     font-weight: 600;
-    color: var(--text-primary, #eee);
+    color: #991b1b;
     margin-bottom: 12px;
   }
 
@@ -1437,12 +1447,13 @@
   }
 
   .eval-btn-pass {
-    background: color-mix(in srgb, var(--amber, #f59e0b) 20%, transparent);
-    color: var(--amber, #f59e0b);
+    background: #fef3c7;
+    color: #92400e;
     width: fit-content;
+    border: 1px solid #fcd34d;
   }
 
-  .eval-btn-pass:hover { background: color-mix(in srgb, var(--amber, #f59e0b) 30%, transparent); }
+  .eval-btn-pass:hover { background: #fde68a; }
 
   .eval-guidance-row {
     display: flex;
@@ -1453,20 +1464,21 @@
     flex: 1;
     padding: 8px 12px;
     border-radius: 8px;
-    border: 1px solid var(--border, #333);
-    background: var(--bg-primary, #0f0f23);
-    color: var(--text-primary, #eee);
+    border: 1px solid #d1d5db;
+    background: white;
+    color: #333;
     font-size: 13px;
     outline: none;
-    transition: border-color 0.15s;
+    transition: border-color 0.15s, box-shadow 0.15s;
   }
 
   .eval-guidance-input:focus {
-    border-color: var(--accent, #6366f1);
+    border-color: #f59e0b;
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.15);
   }
 
   .eval-btn-retry {
-    background: var(--accent, #6366f1);
+    background: #f59e0b;
     color: white;
     white-space: nowrap;
   }

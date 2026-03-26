@@ -1031,8 +1031,46 @@ function broadcastPipelineUpdate(workId: string, pipeline: Record<string, Pipeli
   }
 }
 
+async function waitForCreatorIdle(workId: string, timeoutMs = 120_000): Promise<void> {
+  if (!wsBridge) return;
+  const session = wsBridge.getSession(workId);
+  if (!session) return;
+
+  // If creator CLI is still running, wait for it to exit
+  if (session.cliProcess) {
+    log("info", "api", "eval_waiting_for_creator", workId, {});
+    const start = Date.now();
+    await new Promise<void>((resolve) => {
+      const check = () => {
+        if (!session.cliProcess || Date.now() - start > timeoutMs) {
+          resolve();
+          return;
+        }
+        setTimeout(check, 500);
+      };
+      // Listen for the process exit directly if possible
+      if (session.cliProcess) {
+        session.cliProcess.once("exit", () => {
+          // Give a small delay for final messages to flush
+          setTimeout(resolve, 1000);
+        });
+        // Fallback timeout
+        setTimeout(check, 500);
+      } else {
+        resolve();
+      }
+    });
+    log("info", "api", "eval_creator_idle", workId, { waitedMs: Date.now() - start });
+  }
+}
+
 async function runEvaluation(workId: string, completedStep: string, nextStep?: string): Promise<void> {
   if (!wsBridge) throw new Error("WsBridge not initialized");
+
+  // CRITICAL: Wait for creator agent's CLI process to finish before starting evaluator
+  // The creator calls pipeline/advance as a tool use during its turn — we must not
+  // start the evaluator until the creator's turn is fully complete to avoid interleaved output.
+  await waitForCreatorIdle(workId);
 
   const work = await getWork(workId);
   if (!work) throw new Error("Work not found");
