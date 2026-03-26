@@ -1,17 +1,20 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import MarkdownBlock from "./MarkdownBlock.svelte";
+  import { fetchSharedAssets, uploadAsset, type AssetFile as SharedAssetFile } from "$lib/api";
 
   let {
     workId,
     visible = true,
     refreshTrigger = 0,
     onSendMessage,
+    onAttach,
   }: {
     workId: string;
     visible: boolean;
     refreshTrigger: number;
     onSendMessage?: (text: string) => void;
+    onAttach?: (att: { name: string; url: string; category: string; size: number }) => void;
   } = $props();
 
   interface AssetFile {
@@ -41,10 +44,16 @@
   let pollTimer: ReturnType<typeof setInterval> | null = null;
 
   // Shared assets state
-  type SharedCategory = "characters" | "music" | "templates";
-  let sharedCategory: SharedCategory = $state("characters");
-  let sharedFiles: { name: string; url: string; size?: number }[] = $state([]);
+  const sharedCategories = [
+    { key: "characters", label: "人物" }, { key: "scenes", label: "场景" },
+    { key: "music", label: "音乐" }, { key: "templates", label: "模板" },
+    { key: "branding", label: "品牌" }, { key: "general", label: "通用" },
+  ] as const;
+  let allSharedAssets: Record<string, SharedAssetFile[]> = $state({});
+  let sharedCategory = $state("characters");
   let sharedLoading = $state(false);
+  let sharedUploadInput: HTMLInputElement | undefined = $state(undefined);
+  let sharedUploading = $state(false);
 
   function isImage(name: string) { return /\.(png|jpe?g|webp|gif|svg)$/i.test(name); }
   function isVideo(name: string) { return /\.(mp4|mov|webm|avi)$/i.test(name); }
@@ -104,21 +113,37 @@
     }
   }
 
+  let sharedFiles = $derived(allSharedAssets[sharedCategory] ?? []);
+  let totalSharedCount = $derived(Object.values(allSharedAssets).flat().length);
+
   async function loadSharedAssets() {
     sharedLoading = true;
     try {
-      const res = await fetch(`/api/shared-assets?category=${sharedCategory}`);
-      if (res.ok) {
-        const data = await res.json();
-        sharedFiles = data.files ?? data.assets ?? data.items ?? [];
-      } else {
-        sharedFiles = [];
-      }
-    } catch {
-      sharedFiles = [];
-    } finally {
-      sharedLoading = false;
-    }
+      allSharedAssets = await fetchSharedAssets();
+    } catch { /* ignore */ }
+    sharedLoading = false;
+  }
+
+  function assetUrl(asset: SharedAssetFile) {
+    return `/api/shared-assets/${encodeURIComponent(asset.category)}/${encodeURIComponent(asset.name)}`;
+  }
+
+  function handleAssetClick(asset: SharedAssetFile) {
+    const url = assetUrl(asset);
+    onAttach?.({ name: asset.name, url, category: asset.category, size: asset.size });
+  }
+
+  async function handleSharedUpload(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const fileList = input.files;
+    if (!fileList || fileList.length === 0) return;
+    sharedUploading = true;
+    try {
+      await uploadAsset(sharedCategory, fileList);
+      await loadSharedAssets();
+    } catch { /* ignore */ }
+    sharedUploading = false;
+    input.value = "";
   }
 
   async function handleUpload(e: Event) {
@@ -216,12 +241,7 @@
     }
   });
 
-  $effect(() => {
-    void sharedCategory;
-    if (showSharedPanel) {
-      loadSharedAssets();
-    }
-  });
+  // sharedCategory change is handled by the $derived — no refetch needed
 </script>
 
 {#if visible}
@@ -248,7 +268,7 @@
         <!-- Shared assets button -->
         <button class="toolbar-btn" class:active={showSharedPanel} onclick={() => { showSharedPanel = !showSharedPanel; }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          共享素材库
+          素材 ({totalSharedCount})
         </button>
 
         <!-- Upload -->
@@ -279,13 +299,13 @@
           </div>
 
           <div class="shared-cat-tabs">
-            {#each (["characters", "music", "templates"] as const) as cat}
+            {#each sharedCategories as cat}
               <button
                 class="shared-cat-tab"
-                class:active={sharedCategory === cat}
-                onclick={() => { sharedCategory = cat; }}
+                class:active={sharedCategory === cat.key}
+                onclick={() => { sharedCategory = cat.key; }}
               >
-                {cat === "characters" ? "人物" : cat === "music" ? "配乐" : "模板"}
+                {cat.label}
               </button>
             {/each}
           </div>
@@ -298,10 +318,11 @@
             {:else}
               <div class="shared-grid">
                 {#each sharedFiles as sf}
-                  <div class="shared-item">
+                  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+                  <div class="shared-item" onclick={() => handleAssetClick(sf)} role="button" tabindex="0" onkeydown={(e) => { if (e.key === 'Enter') handleAssetClick(sf); }}>
                     {#if isImage(sf.name)}
                       <div class="shared-thumb">
-                        <img src={sf.url} alt={sf.name} loading="lazy" />
+                        <img src={assetUrl(sf)} alt={sf.name} loading="lazy" />
                       </div>
                     {:else if isAudio(sf.name)}
                       <div class="shared-audio-icon">
@@ -317,6 +338,18 @@
                 {/each}
               </div>
             {/if}
+          </div>
+
+          <!-- Upload button at bottom of shared panel -->
+          <div class="shared-panel-footer">
+            <button class="shared-upload-btn" disabled={sharedUploading} onclick={() => sharedUploadInput?.click()}>
+              {#if sharedUploading}
+                <div class="mini-spinner"></div> 上传中…
+              {:else}
+                + 上传
+              {/if}
+            </button>
+            <input type="file" class="file-input" multiple bind:this={sharedUploadInput} onchange={handleSharedUpload} />
           </div>
         </div>
       {/if}
@@ -744,6 +777,7 @@
 
   .shared-cat-tabs {
     display: flex;
+    flex-wrap: wrap;
     padding: 0.4rem 0.5rem;
     gap: 0.2rem;
   }
@@ -830,6 +864,41 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .shared-panel-footer {
+    padding: 0.5rem;
+    border-top: 1px solid var(--border, rgba(255,255,255,0.06));
+    flex-shrink: 0;
+  }
+
+  .shared-upload-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0;
+    border-radius: 7px;
+    border: 1px dashed var(--border, rgba(255,255,255,0.15));
+    background: none;
+    color: var(--text-dim, rgba(255,255,255,0.5));
+    font-size: 0.72rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .shared-upload-btn:hover {
+    color: var(--accent, #e8e8e8);
+    border-color: var(--accent, #e8e8e8);
+    background: rgba(134,120,191,0.08);
+  }
+
+  .shared-upload-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 
   /* ── Asset canvas ────────────────────────────────────────────────────── */

@@ -462,6 +462,69 @@ curl -X POST http://localhost:3271/api/generate/image \
 
 ---
 
+## 素材获取方式：全网搜索下载
+
+当不使用 AI 生成，而是从互联网下载真实素材时，使用以下工作流：
+
+### 视频素材下载（yt-dlp）
+
+```bash
+# 1. 根据分镜脚本的场景描述，构造搜索关键词
+# 关键词要具体：主体 + 动作 + 风格
+# 例如："epic water drinking slow motion cinematic"
+
+# 2. 搜索并预览（不下载）
+yt-dlp "ytsearch5:epic water drinking slow motion" --get-title --get-url --get-duration
+
+# 3. 下载最佳质量视频（必须带音频）
+yt-dlp -f "bestvideo[height<=1080]+bestaudio/best" --merge-output-format mp4 \
+  -o "clips/clip-01.mp4" "VIDEO_URL"
+
+# 4. 裁切需要的片段
+ffmpeg -i clips/clip-01.mp4 -ss 5 -to 10 -c copy -y clips/clip-01-trimmed.mp4
+```
+
+### 搜索关键词构造规则
+
+根据分镜脚本中每个镜头的描述，按五维约束框架构造关键词：
+
+| 分镜描述 | 搜索关键词 |
+|---------|-----------|
+| 主角认真地拿起水杯 | `person picking up glass water serious cinematic` |
+| 慢镜头倒水特写 | `pouring water slow motion close up cinematic` |
+| 史诗级仰拍喝水 | `drinking water low angle epic cinematic` |
+| 满足地放下杯子 | `person putting down glass satisfied reaction` |
+
+### 下载后必做检查
+
+```bash
+# 验证视频有音频轨
+ffprobe -v error -show_entries stream=codec_type -of csv=p=0 clip-01.mp4 | grep audio
+
+# 检查分辨率
+ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 clip-01.mp4
+```
+
+### 素材管理
+
+- 所有下载的素材保存到作品的 `assets/clips/` 目录
+- 使用 API 上传：`curl -X POST http://localhost:3271/api/works/{workId}/assets -F "file=@clip-01.mp4" -F "path=clips/clip-01.mp4"`
+- 或直接保存到作品目录（通过 API 获取路径）
+
+### 进度跟踪
+
+```
+## 素材下载进度
+
+- [x] 镜头 01: 搜索 ✓ | 下载 ✓ | 裁切 ✓
+- [ ] 镜头 02: 搜索 ⏳ | 下载 — | 裁切 —
+- [ ] 镜头 03: 搜索 — | 下载 — | 裁切 —
+
+已完成: 1/3 镜头
+```
+
+---
+
 ## 垂类专项指南
 
 执行前检查 `genres/` 目录。如果当前作品的内容类型（如搞笑、美食、教育等）有对应的 `genres/<type>.md` 文件，**必须读取并遵循其中的专项规则**——特别是视觉风格、色调策略和提示词调整方面，垂类文件的规则优先级高于本文件的通用规则。

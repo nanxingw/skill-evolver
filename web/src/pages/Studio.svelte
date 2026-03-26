@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { t, getLanguage, subscribe } from "../lib/i18n";
-  import { fetchWork, startWorkSession, type Work } from "../lib/api";
+  import { fetchWork, startWorkSession, type Work, fetchSharedAssets, uploadAsset, type AssetFile } from "../lib/api";
   import { createWorkWs } from "../lib/ws";
   import PipelineSteps from "../components/PipelineSteps.svelte";
   import MarkdownBlock from "../components/MarkdownBlock.svelte";
@@ -39,6 +39,70 @@
   let showNextStep = $state(false);
   let aborted = $state(false);
   let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // --- Attachment system ---
+  interface ChatAttachment {
+    name: string;
+    url: string;
+    category: string;
+    size: number;
+  }
+
+  let attachments: ChatAttachment[] = $state([]);
+  let showAssetPicker = $state(false);
+
+  function addAttachment(att: ChatAttachment) {
+    if (!attachments.some(a => a.url === att.url)) {
+      attachments = [...attachments, att];
+    }
+    showAssetPicker = false;
+  }
+
+  function removeAttachment(idx: number) {
+    attachments = attachments.filter((_, i) => i !== idx);
+  }
+
+  function formatAttachments(): string {
+    if (attachments.length === 0) return "";
+    const lines = attachments.map(a => {
+      const ext = a.name.split(".").pop()?.toLowerCase() ?? "";
+      const isImg = ["png","jpg","jpeg","gif","webp","svg"].includes(ext);
+      const isAudio = ["mp3","wav","ogg","m4a","aac"].includes(ext);
+      const isVideo = ["mp4","mov","webm"].includes(ext);
+      const type = isImg ? "图片" : isAudio ? "音频" : isVideo ? "视频" : "文件";
+      const sizeStr = a.size > 1024*1024 ? `${(a.size/1024/1024).toFixed(1)}MB` : `${Math.round(a.size/1024)}KB`;
+      return `[附件: ${a.url} (${type}, ${sizeStr})]`;
+    });
+    return "\n\n" + lines.join("\n");
+  }
+
+  let pickerAssets: Record<string, AssetFile[]> = $state({});
+  let pickerCategory = $state("characters");
+
+  const CATS = [
+    { key: "characters", label: "人物" }, { key: "scenes", label: "场景" },
+    { key: "music", label: "音乐" }, { key: "templates", label: "模板" },
+    { key: "branding", label: "品牌" }, { key: "general", label: "通用" },
+  ];
+
+  async function openPicker() {
+    showAssetPicker = !showAssetPicker;
+    if (showAssetPicker) {
+      try { pickerAssets = await fetchSharedAssets(); } catch {}
+    }
+  }
+
+  async function handleLocalUpload(e: Event) {
+    const input = e.target as HTMLInputElement;
+    if (!input.files?.length) return;
+    try {
+      const result = await uploadAsset("general", input.files);
+      for (const f of result.uploaded) {
+        addAttachment({ name: f.name, url: f.url, category: f.category, size: f.size });
+      }
+    } catch {}
+    input.value = "";
+  }
 
   // Derived: check if all steps done or any pending
   let allStepsDone = $derived(
@@ -83,13 +147,17 @@
 
   function handleSend() {
     const text = inputText.trim();
-    if (!text || streaming) return;
+    if (!text && attachments.length === 0) return;
+    if (streaming) return;
+    const fullText = text + formatAttachments();
     inputText = "";
     if (inputEl) inputEl.value = "";
-    streamBlocks = [...streamBlocks, { type: "user", text }];
+    attachments = [];
+    showAssetPicker = false;
+    streamBlocks = [...streamBlocks, { type: "user", text: fullText }];
     streaming = true;
     showNextStep = false;
-    wsConn?.send(text);
+    wsConn?.send(fullText);
     scrollToBottom();
   }
 
@@ -468,8 +536,54 @@
         {/if}
       </div>
 
+      {#if attachments.length > 0}
+        <div class="attachment-bar">
+          {#each attachments as att, i}
+            <span class="attachment-chip">
+              <span class="att-icon">{att.name.match(/\.(png|jpg|jpeg|gif|webp|svg)$/i) ? '🖼' : att.name.match(/\.(mp3|wav|ogg|m4a|aac)$/i) ? '🎵' : att.name.match(/\.(mp4|mov|webm)$/i) ? '🎬' : '📄'}</span>
+              <span class="att-name">{att.name}</span>
+              <button class="att-remove" onclick={() => removeAttachment(i)}>✕</button>
+            </span>
+          {/each}
+        </div>
+      {/if}
+
+      {#if showAssetPicker}
+        <div class="asset-picker-popover">
+          <div class="picker-header">从素材库选择</div>
+          <div class="picker-cats">
+            {#each CATS as cat}
+              <button class="picker-cat-btn" class:active={pickerCategory === cat.key} onclick={() => pickerCategory = cat.key}>
+                {cat.label}
+              </button>
+            {/each}
+          </div>
+          <div class="picker-grid">
+            {#each (pickerAssets[pickerCategory] ?? []) as asset}
+              <button class="picker-item" onclick={() => addAttachment({ name: asset.name, url: `/api/shared-assets/${encodeURIComponent(asset.category)}/${encodeURIComponent(asset.name)}`, category: asset.category, size: asset.size })}>
+                {#if asset.name.match(/\.(png|jpg|jpeg|gif|webp|svg)$/i)}
+                  <img src="/api/shared-assets/{encodeURIComponent(asset.category)}/{encodeURIComponent(asset.name)}" alt={asset.name} class="picker-thumb" />
+                {:else}
+                  <span class="picker-icon">{asset.name.match(/\.(mp3|wav)$/i) ? '🎵' : '📄'}</span>
+                {/if}
+                <span class="picker-name">{asset.name}</span>
+              </button>
+            {/each}
+            {#if (pickerAssets[pickerCategory] ?? []).length === 0}
+              <div class="picker-empty">暂无素材</div>
+            {/if}
+          </div>
+          <div class="picker-divider"></div>
+          <label class="picker-upload">
+            📤 从本地上传文件
+            <input type="file" multiple hidden onchange={handleLocalUpload} />
+          </label>
+        </div>
+      {/if}
+
       <div class="input-bar">
         <div class="input-wrapper">
+          <button class="attach-btn" onclick={openPicker} title="附件">📎</button>
           <textarea
             class="msg-input"
             bind:this={inputEl}
@@ -479,7 +593,7 @@
             disabled={!sessionReady || streaming}
             rows="1"
           ></textarea>
-          <button class="send-btn" onclick={handleSend} disabled={!sessionReady || streaming || !inputText.trim()}>
+          <button class="send-btn" onclick={handleSend} disabled={!sessionReady || streaming || (!inputText.trim() && attachments.length === 0)}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           </button>
         </div>
@@ -643,6 +757,7 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
+    position: relative;
   }
 
   .panel-right {
@@ -925,6 +1040,60 @@
     color: var(--text-dim);
     line-height: 1.35;
   }
+
+  /* Attachment system */
+  .attachment-bar {
+    display: flex; flex-wrap: wrap; gap: 0.3rem; padding: 0.4rem 0.6rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .attachment-chip {
+    display: flex; align-items: center; gap: 0.25rem;
+    background: var(--bg-surface); border: 1px solid var(--border); border-radius: 6px;
+    padding: 0.2rem 0.4rem; font-size: 0.72rem;
+  }
+  .att-name { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .att-remove { background: none; border: none; cursor: pointer; color: var(--text-dim); font-size: 0.65rem; padding: 0 0.15rem; }
+  .att-remove:hover { color: var(--spark-red); }
+
+  .attach-btn {
+    background: none; border: none; cursor: pointer; font-size: 1.1rem; padding: 0.3rem;
+    color: var(--text-muted); transition: color 0.15s;
+  }
+  .attach-btn:hover { color: var(--text); }
+
+  .asset-picker-popover {
+    position: absolute; bottom: 100%; left: 0; right: 0;
+    background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 -4px 12px rgba(0,0,0,0.15); max-height: 280px; overflow: hidden;
+    display: flex; flex-direction: column; z-index: 100;
+  }
+  .picker-header { font-size: 0.75rem; font-weight: 600; padding: 0.5rem 0.6rem; color: var(--text-muted); }
+  .picker-cats { display: flex; gap: 0.2rem; padding: 0 0.5rem 0.4rem; flex-wrap: wrap; }
+  .picker-cat-btn {
+    font-size: 0.68rem; padding: 0.15rem 0.4rem; border-radius: 4px;
+    background: var(--bg-surface); border: 1px solid var(--border); color: var(--text-muted); cursor: pointer;
+  }
+  .picker-cat-btn.active { background: var(--spark-red); color: #fff; border-color: transparent; }
+  .picker-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+    gap: 0.3rem; padding: 0 0.5rem; overflow-y: auto; flex: 1; max-height: 160px;
+  }
+  .picker-item {
+    display: flex; flex-direction: column; align-items: center; gap: 0.15rem;
+    padding: 0.3rem; border-radius: 6px; border: 1px solid transparent;
+    background: none; cursor: pointer; color: var(--text);
+  }
+  .picker-item:hover { background: var(--bg-surface); border-color: var(--border); }
+  .picker-thumb { width: 48px; height: 48px; object-fit: cover; border-radius: 4px; }
+  .picker-icon { font-size: 1.5rem; }
+  .picker-name { font-size: 0.6rem; max-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
+  .picker-empty { grid-column: 1/-1; text-align: center; color: var(--text-dim); font-size: 0.72rem; padding: 1rem; }
+  .picker-divider { height: 1px; background: var(--border); margin: 0.3rem 0.5rem; }
+  .picker-upload {
+    display: flex; align-items: center; gap: 0.3rem; padding: 0.4rem 0.6rem;
+    font-size: 0.72rem; color: var(--text-muted); cursor: pointer;
+  }
+  .picker-upload:hover { color: var(--text); }
 
   /* Responsive */
   @media (max-width: 1024px) {

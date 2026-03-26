@@ -611,11 +611,47 @@ ffmpeg -i audio1.mp3 -i audio2.mp3 \
 
 ## 扩展能力模块
 
-检查 `modules/` 目录，根据当前任务需要加载相关能力模块。
+本 skill 自带以下模块和脚本，**必须优先使用这些工具，不要自己写内联代码替代**：
+
+### 可用模块
+
+| 模块 | 文档路径 | 用途 |
+|------|---------|------|
+| 热门音乐搜索 | `modules/music-search.md` | 从 YouTube/B站搜索下载 BGM，按情绪/BPM 匹配 |
+| 卡点剪辑 | `modules/beat-sync.md` | 节拍检测 + 视频与音乐节拍对齐 |
+
+### 可用脚本
+
+| 脚本 | 路径 | 用途 | 用法示例 |
+|------|------|------|---------|
+| 节拍检测 | `scripts/beat-sync/detect_beats.py` | 分析音乐节拍、BPM、强拍 | `python3 skills/content-assembly/scripts/beat-sync/detect_beats.py bgm.mp3 -o beats.json` |
+| 一键卡点 | `scripts/beat-sync/beat_sync_edit.py` | 自动按节拍切割视频+混入BGM | `python3 skills/content-assembly/scripts/beat-sync/beat_sync_edit.py --video source.mp4 --music bgm.mp3 --output final.mp4 --style dramatic` |
+
+**⚠️ 重要：当需要节拍分析或卡点剪辑时，必须调用上述脚本，禁止自己写 librosa/numpy 内联代码。**
+
+### 使用流程
+
+1. 需要 BGM → 先读 `modules/music-search.md`，用 yt-dlp 搜索下载
+2. 需要分析节拍 → 运行 `detect_beats.py` 获取 beats.json
+3. 需要卡点剪辑 → 运行 `beat_sync_edit.py` 一键完成
+4. 需要手动精调 → 参考 `modules/beat-sync.md` 中的手动流程
 
 ---
 
 ## 错误处理
+
+### 音频丢失防护（极重要）
+
+**每一步 ffmpeg 处理后，都必须验证输出文件包含音频流：**
+```bash
+ffprobe -v error -show_entries stream=codec_type -of csv=p=0 output.mp4 | grep audio
+```
+如果没有 `audio` 行，说明音频丢失了。常见原因：
+- 使用 `-map 0:v` 时忘记同时 `-map 0:a`（或用 `-map 0` 映射所有流）
+- 使用 `-vf` 视频滤镜时没有用 `-c:a copy` 保留音频
+- 多步骤处理时中间文件丢了音频（letterbox、字幕叠加等步骤特别容易出问题）
+
+**安全做法：** 在 pad/crop/overlay 等纯视频操作中始终加 `-c:a copy` 或 `-map 0:a`。
 
 ### 常见 ffmpeg 错误
 

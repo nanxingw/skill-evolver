@@ -130,7 +130,7 @@ function defaultPipeline(type: WorkType, videoSource?: VideoSource): Record<stri
   }
 
   const names: Record<string, Record<string, string>> = {
-    "short-video": { research: "话题调研", plan: "分镜规划", assembly: "视频合成" },
+    "short-video": { research: "话题调研", plan: "分镜规划", assets: "素材准备", assembly: "视频合成" },
     "image-text": { research: "话题调研", plan: "内容规划", assets: "图片生成", assembly: "图文排版" },
   };
   for (const [key, name] of Object.entries(names[type])) {
