@@ -13,7 +13,7 @@ export type WorkStatus = "draft" | "creating" | "ready" | "failed";
 
 export interface PipelineStep {
   name: string;
-  status: "pending" | "active" | "done" | "skipped";
+  status: "pending" | "active" | "evaluating" | "done" | "skipped" | "eval_blocked";
   startedAt?: string;
   completedAt?: string;
   note?: string;
@@ -35,6 +35,9 @@ export interface Work {
   cliSessionId?: string;
   coverImage?: string;
   topicHint?: string;
+  evaluationMode?: boolean;
+  evalSessionIds?: Record<string, string>;
+  evalAttempts?: Record<string, number>;
   createdAt: string;
   updatedAt: string;
 }
@@ -304,4 +307,43 @@ export async function loadWorkChat(id: string): Promise<unknown | null> {
   } catch {
     return null;
   }
+}
+
+// ── Evaluation results ──────────────────────────────────────────────────────
+
+export interface EvalResult {
+  step: string;
+  attempt: number;
+  verdict: "pass" | "fail";
+  scores: Record<string, number>;
+  issues: Array<{ severity: "critical" | "major" | "minor"; description: string; file?: string }>;
+  suggestions: string[];
+  timestamp: string;
+}
+
+export async function saveEvalResult(id: string, step: string, attempt: number, result: EvalResult): Promise<void> {
+  const dir = workDir(id);
+  await mkdir(dir, { recursive: true });
+  const filePath = join(dir, `eval-${step}-${attempt}.json`);
+  await writeFile(filePath, JSON.stringify(result, null, 2), "utf-8");
+}
+
+export async function loadEvalResult(id: string, step: string, attempt: number): Promise<EvalResult | null> {
+  try {
+    const filePath = join(workDir(id), `eval-${step}-${attempt}.json`);
+    const raw = await readFile(filePath, "utf-8");
+    return JSON.parse(raw) as EvalResult;
+  } catch {
+    return null;
+  }
+}
+
+export async function loadAllEvalResults(id: string, step: string): Promise<EvalResult[]> {
+  const results: EvalResult[] = [];
+  for (let i = 1; i <= 10; i++) {
+    const r = await loadEvalResult(id, step, i);
+    if (r) results.push(r);
+    else break;
+  }
+  return results;
 }
