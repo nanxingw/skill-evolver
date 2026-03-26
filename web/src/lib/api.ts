@@ -205,3 +205,40 @@ export async function fetchTrends(platform: string) {
 export async function refreshTrends() {
   return post<any>("/api/trends/refresh", {});
 }
+
+// ---------------------------------------------------------------------------
+// Evaluation API
+// ---------------------------------------------------------------------------
+
+export interface EvalIssue {
+  severity: "critical" | "major" | "minor";
+  description: string;
+  file?: string;
+}
+
+export interface EvalResult {
+  step: string;
+  attempt: number;
+  verdict: "pass" | "fail";
+  scores: Record<string, number>;
+  issues: EvalIssue[];
+  suggestions: string[];
+  timestamp: string;
+}
+
+export async function toggleEvalMode(workId: string): Promise<{ evaluationMode: boolean }> {
+  return post<{ evaluationMode: boolean }>(`/api/works/${encodeURIComponent(workId)}/eval/toggle`, {});
+}
+
+export async function forcePassEval(workId: string, step: string, nextStep?: string): Promise<{ pipeline: Record<string, PipelineStep> }> {
+  return post<{ pipeline: Record<string, PipelineStep> }>(`/api/works/${encodeURIComponent(workId)}/eval/force-pass`, { step, nextStep });
+}
+
+export async function retryWithGuidance(workId: string, step: string, guidance: string): Promise<void> {
+  await post(`/api/works/${encodeURIComponent(workId)}/eval/retry`, { step, guidance });
+}
+
+export async function fetchEvalResults(workId: string, step: string): Promise<EvalResult[]> {
+  const data = await get<{ results: EvalResult[] }>(`/api/works/${encodeURIComponent(workId)}/eval/results/${encodeURIComponent(step)}`);
+  return data.results;
+}
