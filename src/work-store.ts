@@ -44,6 +44,8 @@ export interface WorkSummary {
   id: string;
   title: string;
   type: WorkType;
+  contentCategory?: ContentCategory;
+  platforms?: string[];
   status: WorkStatus;
   updatedAt: string;
 }
@@ -116,7 +118,7 @@ async function writeWorkFile(work: Work): Promise<void> {
 }
 
 function toSummary(w: Work): WorkSummary {
-  return { id: w.id, title: w.title, type: w.type, status: w.status, updatedAt: w.updatedAt };
+  return { id: w.id, title: w.title, type: w.type, contentCategory: w.contentCategory, platforms: w.platforms, status: w.status, updatedAt: w.updatedAt };
 }
 
 // ── Pipeline templates ───────────────────────────────────────────────────────
