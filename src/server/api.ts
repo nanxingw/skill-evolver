@@ -10,6 +10,8 @@ import {
   listWorks, getWork, createWork as storeCreateWork,
   updateWork as storeUpdateWork, deleteWork as storeDeleteWork,
   listAssets, getAssetPath, saveStepHistory, loadStepHistory,
+  saveWorkChat, saveEvalResult, loadAllEvalResults,
+  type Work, type PipelineStep, type EvalResult,
 } from "../work-store.js";
 import { MemoryClient } from "../memory.js";
 import type { WsBridge } from "../ws-bridge.js";
@@ -1012,6 +1014,249 @@ apiRoutes.post("/api/works/:id/step/:step", async (c) => {
   }
 });
 
+// ── Evaluation helpers ──────────────────────────────────────────────────────
+
+function broadcastPipelineUpdate(workId: string, pipeline: Record<string, PipelineStep>): void {
+  if (!wsBridge) return;
+  const session = wsBridge.getSession(workId);
+  if (!session) return;
+  for (const ws of session.browserSockets) {
+    if (ws.readyState === 1) {
+      ws.send(JSON.stringify({
+        event: "pipeline_updated",
+        data: { workId, pipeline },
+        timestamp: new Date().toISOString(),
+      }));
+    }
+  }
+}
+
+async function runEvaluation(workId: string, completedStep: string, nextStep?: string): Promise<void> {
+  if (!wsBridge) throw new Error("WsBridge not initialized");
+
+  const work = await getWork(workId);
+  if (!work) throw new Error("Work not found");
+
+  const session = wsBridge.ensureSession(workId);
+  session.evalStep = completedStep;
+
+  const attempt = (work.evalAttempts?.[completedStep] ?? 0) + 1;
+
+  // Load step history for context
+  const stepHistory = await loadStepHistory(workId, completedStep);
+  const historyText = (stepHistory as any)?.blocks
+    ?.filter((b: any) => b.type === "text")
+    .map((b: any) => b.text)
+    .join("\n\n")
+    .slice(0, 8000) ?? "";
+
+  // Load previous eval results
+  const prevResults = await loadAllEvalResults(workId, completedStep);
+  const prevResultsText = prevResults.length > 0
+    ? prevResults.map(r => `第${r.attempt}轮评审: ${r.verdict}\n问题: ${r.issues.map(i => i.description).join("; ")}\n建议: ${r.suggestions.join("; ")}`).join("\n\n")
+    : "";
+
+  // Build evaluator prompt
+  const evalPrompt = buildEvalPrompt(work, completedStep, attempt, historyText, prevResultsText);
+
+  // Broadcast eval_divider start
+  session.messageHistory.push({
+    type: "eval_divider" as any,
+    text: `评审开始 (第${attempt}轮)`,
+    source: "evaluator",
+    timestamp: new Date().toISOString(),
+  });
+  wsBridge.broadcastToBrowsers(workId, {
+    event: "eval_divider",
+    data: { type: "start", step: completedStep, attempt },
+  });
+
+  // Spawn evaluator (resume if same step has prior session)
+  const resumeId = work.evalSessionIds?.[completedStep];
+  try {
+    const evalResult = await wsBridge.spawnEvaluator(session, evalPrompt, resumeId);
+    evalResult.step = completedStep;
+    evalResult.attempt = attempt;
+    evalResult.timestamp = new Date().toISOString();
+
+    // Save result
+    await saveEvalResult(workId, completedStep, attempt, evalResult);
+
+    // Update attempts
+    const evalAttempts = { ...(work.evalAttempts ?? {}), [completedStep]: attempt };
+    // Also persist evalSessionId
+    const evalSessionIds = { ...(work.evalSessionIds ?? {}), [completedStep]: session.evalSessionId ?? "" };
+    await storeUpdateWork(workId, { evalAttempts, evalSessionIds } as any);
+
+    if (evalResult.verdict === "pass") {
+      // PASS — advance pipeline
+      session.messageHistory.push({
+        type: "eval_divider" as any,
+        text: "评审通过 ✓",
+        source: "evaluator",
+        timestamp: new Date().toISOString(),
+      });
+      wsBridge.broadcastToBrowsers(workId, {
+        event: "eval_divider",
+        data: { type: "end", step: completedStep, verdict: "pass", scores: evalResult.scores },
+      });
+
+      // Clean up eval session for this step
+      const cleanedEvalSessionIds = { ...evalSessionIds };
+      delete cleanedEvalSessionIds[completedStep];
+
+      const freshWork = await getWork(workId);
+      if (freshWork) {
+        freshWork.pipeline[completedStep].status = "done";
+        freshWork.pipeline[completedStep].completedAt = new Date().toISOString();
+        if (nextStep && freshWork.pipeline[nextStep]) {
+          freshWork.pipeline[nextStep].status = "active";
+          freshWork.pipeline[nextStep].startedAt = new Date().toISOString();
+        }
+        await storeUpdateWork(workId, {
+          pipeline: freshWork.pipeline,
+          evalSessionIds: cleanedEvalSessionIds,
+          evalAttempts: { ...(freshWork.evalAttempts ?? {}), [completedStep]: 0 },
+        } as any);
+        broadcastPipelineUpdate(workId, freshWork.pipeline);
+      }
+
+      // Persist chat
+      saveWorkChat(workId, { blocks: session.messageHistory }).catch(() => {});
+    } else {
+      // FAIL — send feedback to creator agent
+      session.messageHistory.push({
+        type: "eval_divider" as any,
+        text: `评审未通过 ✗ (${evalResult.issues.length}个问题)`,
+        source: "evaluator",
+        timestamp: new Date().toISOString(),
+      });
+      wsBridge.broadcastToBrowsers(workId, {
+        event: "eval_divider",
+        data: { type: "end", step: completedStep, verdict: "fail", scores: evalResult.scores, issues: evalResult.issues },
+      });
+
+      // Check iteration limit
+      if (attempt >= 3) {
+        const freshWork = await getWork(workId);
+        if (freshWork) {
+          freshWork.pipeline[completedStep].status = "eval_blocked" as any;
+          await storeUpdateWork(workId, { pipeline: freshWork.pipeline });
+          broadcastPipelineUpdate(workId, freshWork.pipeline);
+        }
+        wsBridge.broadcastToBrowsers(workId, {
+          event: "eval_blocked",
+          data: { workId, step: completedStep, attempt, result: evalResult },
+        });
+        saveWorkChat(workId, { blocks: session.messageHistory }).catch(() => {});
+        return;
+      }
+
+      // Set step back to active
+      const freshWork = await getWork(workId);
+      if (freshWork) {
+        freshWork.pipeline[completedStep].status = "active";
+        await storeUpdateWork(workId, { pipeline: freshWork.pipeline });
+        broadcastPipelineUpdate(workId, freshWork.pipeline);
+      }
+
+      // Inject feedback into creator agent via resume
+      const feedbackPrompt = buildFeedbackPrompt(evalResult, attempt);
+      await wsBridge.sendMessage(workId, feedbackPrompt);
+
+      // Persist chat
+      saveWorkChat(workId, { blocks: session.messageHistory }).catch(() => {});
+    }
+  } catch (err) {
+    log("error", "api", "eval_error", workId, { error: (err as Error).message });
+    // On evaluator failure, revert to active
+    const freshWork = await getWork(workId);
+    if (freshWork) {
+      freshWork.pipeline[completedStep].status = "active";
+      await storeUpdateWork(workId, { pipeline: freshWork.pipeline });
+      broadcastPipelineUpdate(workId, freshWork.pipeline);
+    }
+  }
+}
+
+function buildFeedbackPrompt(evalResult: EvalResult, attempt: number): string {
+  const issueList = evalResult.issues
+    .map((i, idx) => `${idx + 1}. [${i.severity}] ${i.description}${i.file ? ` (文件: ${i.file})` : ""}`)
+    .join("\n");
+  const suggestionList = evalResult.suggestions
+    .map((s, idx) => `${idx + 1}. ${s}`)
+    .join("\n");
+
+  return `## 评审反馈 (第${attempt}轮)
+
+评审未通过，请根据以下反馈修复问题后重新提交：
+
+### 问题列表
+${issueList}
+
+### 修改建议
+${suggestionList}
+
+请修复以上问题，修复完成后再次调用 pipeline/advance 提交评审。`;
+}
+
+function buildEvalPrompt(work: Work, step: string, attempt: number, historyText: string, prevResultsText: string): string {
+  const stepName = work.pipeline[step]?.name ?? step;
+  const platforms = work.platforms?.join(", ") ?? "未指定";
+
+  return `你是一位严格的内容质量评审专家。你的任务是审查「${work.title}」的「${stepName}」阶段产出。
+
+## 你的角色
+- 你是独立的评审者，不是创作者。你的职责是发现问题，而不是赞美。
+- AI 存在"自我评价偏差"——倾向于赞美自己的产出。你必须刻意克服这种倾向。
+- 使用硬性阈值，不要模糊通过。任何维度低于 6/10 分必须打回。
+
+## 作品信息
+- 标题: ${work.title}
+- 类型: ${work.type}
+- 平台: ${platforms}
+- 当前阶段: ${stepName}
+- 评审轮次: 第${attempt}轮
+
+## 评审标准
+请阅读 skills/content-evaluator/criteria/${step}.md 获取该阶段的详细评审标准。如果文件不存在，请使用通用的内容质量标准进行评审。
+
+## 创作产出摘要
+${historyText.slice(0, 6000) || "(无文本产出记录)"}
+
+## 评审指令
+1. 检查作品目录下的实际文件
+2. 对于图片文件：使用 Read 工具查看图片，评估视觉质量
+3. 对于视频文件：使用 ffprobe 检查技术参数（分辨率、时长、编码、音频轨）
+4. 根据评审标准逐项评分
+5. 输出结构化评审结果
+
+${prevResultsText ? `## 历史评审记录\n${prevResultsText}\n\n请特别关注之前指出的问题是否已修复。不要重复提出已修复的问题。` : ""}
+
+## 输出格式（必须严格遵循）
+
+在你的分析之后，输出以下 JSON 代码块：
+
+\`\`\`json
+{
+  "verdict": "pass" 或 "fail",
+  "scores": {
+    "维度1": 1-10,
+    "维度2": 1-10
+  },
+  "issues": [
+    {"severity": "critical/major/minor", "description": "问题描述", "file": "相关文件路径（可选）"}
+  ],
+  "suggestions": ["修改建议1", "修改建议2"]
+}
+\`\`\`
+
+规则：
+- 任何 critical 问题 → 必须 fail
+- 任何维度 < 6/10 → 必须 fail
+- 所有维度 ≥ 7/10 且无 critical 问题 → pass`;
+}
+
 // POST /api/works/:id/pipeline/advance — agent calls this to advance pipeline
 apiRoutes.post("/api/works/:id/pipeline/advance", async (c) => {
   const id = c.req.param("id");
@@ -1024,13 +1269,26 @@ apiRoutes.post("/api/works/:id/pipeline/advance", async (c) => {
     const { completedStep, nextStep } = body;
     if (!completedStep) return c.json({ error: "completedStep is required" }, 400);
 
-    // Mark completed step as done
+    // ── Evaluation gate ─────────────────────────────────────────────────
+    if (work.evaluationMode && work.pipeline[completedStep]?.status !== "evaluating") {
+      work.pipeline[completedStep].status = "evaluating" as any;
+      await storeUpdateWork(id, { pipeline: work.pipeline });
+      broadcastPipelineUpdate(id, work.pipeline);
+
+      // Start evaluation asynchronously (don't await — return immediately)
+      runEvaluation(id, completedStep, nextStep).catch((err) => {
+        log("error", "api", "eval_failed", id, { error: (err as Error).message });
+      });
+
+      return c.json({ ok: true, evaluating: true, pipeline: work.pipeline });
+    }
+
+    // ── Normal advance (eval off or already passed) ─────────────────────
     if (work.pipeline[completedStep]) {
       work.pipeline[completedStep].status = "done";
       work.pipeline[completedStep].completedAt = new Date().toISOString();
     }
 
-    // Also mark all steps before completedStep as done (in case agent skipped)
     const stepKeys = Object.keys(work.pipeline);
     const completedIdx = stepKeys.indexOf(completedStep);
     if (completedIdx > 0) {
@@ -1043,7 +1301,6 @@ apiRoutes.post("/api/works/:id/pipeline/advance", async (c) => {
       }
     }
 
-    // Mark next step as active if provided
     if (nextStep && work.pipeline[nextStep]) {
       work.pipeline[nextStep].status = "active";
       work.pipeline[nextStep].startedAt = new Date().toISOString();
@@ -1051,44 +1308,87 @@ apiRoutes.post("/api/works/:id/pipeline/advance", async (c) => {
 
     await storeUpdateWork(id, { pipeline: work.pipeline });
 
-    // Sync conversation to EverMemOS (fire and forget)
+    // Memory sync (keep existing logic)
     if (completedStep) {
       loadStepHistory(id, completedStep).then(history => {
         const h = history as { blocks?: { type: string; text: string }[] } | null;
         if (h?.blocks) {
           getWork(id).then(w => {
             syncStepConversation(
-              id,
-              w?.title ?? "Untitled",
-              completedStep,
-              w?.pipeline?.[completedStep]?.name ?? completedStep,
-              h.blocks!,
-            ).catch(() => {})
-          }).catch(() => {})
+              id, w?.title ?? "Untitled", completedStep,
+              w?.pipeline?.[completedStep]?.name ?? completedStep, h.blocks!,
+            ).catch(() => {});
+          }).catch(() => {});
         }
-      }).catch(() => {})
+      }).catch(() => {});
     }
 
-    // Broadcast pipeline update to browsers via WsBridge
-    if (wsBridge) {
-      const session = wsBridge.getSession(id);
-      if (session) {
-        for (const ws of session.browserSockets) {
-          if (ws.readyState === 1) {
-            ws.send(JSON.stringify({
-              event: "pipeline_updated",
-              data: { workId: id, pipeline: work.pipeline },
-              timestamp: new Date().toISOString(),
-            }));
-          }
-        }
-      }
-    }
-
+    broadcastPipelineUpdate(id, work.pipeline);
     return c.json({ ok: true, pipeline: work.pipeline });
   } catch (err) {
     return c.json({ error: err instanceof Error ? err.message : "Pipeline advance error" }, 500);
   }
+});
+
+// ---------------------------------------------------------------------------
+// Evaluation API endpoints
+// ---------------------------------------------------------------------------
+
+// POST /api/works/:id/eval/toggle
+apiRoutes.post("/api/works/:id/eval/toggle", async (c) => {
+  const id = c.req.param("id");
+  const work = await getWork(id);
+  if (!work) return c.json({ error: "Work not found" }, 404);
+  const newMode = !(work.evaluationMode ?? false);
+  await storeUpdateWork(id, { evaluationMode: newMode } as any);
+  return c.json({ ok: true, evaluationMode: newMode });
+});
+
+// POST /api/works/:id/eval/force-pass
+apiRoutes.post("/api/works/:id/eval/force-pass", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json<{ step: string; nextStep?: string }>().catch(() => ({} as any));
+  const work = await getWork(id);
+  if (!work) return c.json({ error: "Work not found" }, 404);
+  const { step, nextStep } = body;
+  if (!step || !["eval_blocked", "evaluating"].includes(work.pipeline[step]?.status as string)) {
+    return c.json({ error: "Step not in eval_blocked/evaluating state" }, 400);
+  }
+  work.pipeline[step].status = "done";
+  work.pipeline[step].completedAt = new Date().toISOString();
+  if (nextStep && work.pipeline[nextStep]) {
+    work.pipeline[nextStep].status = "active";
+    work.pipeline[nextStep].startedAt = new Date().toISOString();
+  }
+  await storeUpdateWork(id, { pipeline: work.pipeline });
+  broadcastPipelineUpdate(id, work.pipeline);
+  return c.json({ ok: true, pipeline: work.pipeline });
+});
+
+// POST /api/works/:id/eval/retry
+apiRoutes.post("/api/works/:id/eval/retry", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json<{ step: string; guidance: string }>().catch(() => ({} as any));
+  const work = await getWork(id);
+  if (!work) return c.json({ error: "Work not found" }, 404);
+  const { step, guidance } = body;
+  if (!step) return c.json({ error: "step required" }, 400);
+  work.pipeline[step].status = "active";
+  const evalAttempts = { ...(work.evalAttempts ?? {}), [step]: 0 };
+  await storeUpdateWork(id, { pipeline: work.pipeline, evalAttempts } as any);
+  broadcastPipelineUpdate(id, work.pipeline);
+  if (wsBridge && guidance) {
+    await wsBridge.sendMessage(id, `## 用户指导\n\n${guidance}\n\n请根据以上指导修改当前阶段的产出，完成后重新提交。`);
+  }
+  return c.json({ ok: true });
+});
+
+// GET /api/works/:id/eval/results/:step
+apiRoutes.get("/api/works/:id/eval/results/:step", async (c) => {
+  const id = c.req.param("id");
+  const step = c.req.param("step");
+  const results = await loadAllEvalResults(id, step);
+  return c.json({ results });
 });
 
 // ---------------------------------------------------------------------------
